@@ -93,6 +93,8 @@ Após subir, acesse:
 - `http://localhost:8000/health`
 - `http://localhost:8000/db-status`
 
+O serviço da API também possui `healthcheck` no Compose para facilitar validação do container.
+
 Para parar:
 
 `docker compose down`
@@ -144,6 +146,53 @@ Executar:
 `poetry run pytest`
 
 Cobertura atual configurada com mínimo de `80%` para os domínios críticos.
+
+## Relatório de vulnerabilidades
+
+O projeto foi preparado para gerar relatórios de segurança com:
+
+- `Bandit`: análise estática de segurança do código Python
+- `pip-audit`: análise de vulnerabilidades nas dependências Python
+- `Trivy`: análise complementar de filesystem e container
+
+### Instalação
+
+As ferramentas `Bandit` e `pip-audit` já estão configuradas nas dependências de desenvolvimento do projeto.
+
+### Gerar relatório local
+
+Executar:
+
+`bash scripts/security_scan.sh`
+
+Os relatórios serão gerados em:
+
+- `reports/security/bandit-report.json`
+- `reports/security/pip-audit-report.json`
+- `reports/security/trivy-fs-report.json` (quando o Trivy estiver instalado na máquina)
+- `reports/security/security-report.md`
+- `reports/security/security-report.pdf`
+
+### Executar manualmente
+
+- `poetry run bandit -r app`
+- `poetry run pip-audit`
+- `trivy fs .`
+
+### Relatório amigável
+
+O script também consolida os achados em formatos mais fáceis de compartilhar com time e gestão:
+
+- Markdown: `reports/security/security-report.md`
+- PDF: `reports/security/security-report.pdf`
+
+Isso facilita anexar o relatório em entregas, documentação e evidências do projeto.
+
+### Observações
+
+- `pip-audit` pode retornar código diferente de zero quando encontrar vulnerabilidades; isso indica achados, não falha da configuração
+- `Trivy` não é instalado pelo Poetry; ele deve ser instalado no sistema para complementar a análise
+- os relatórios JSON gerados ficam ignorados no Git
 
 ## Observações
 

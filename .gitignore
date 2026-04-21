@@ -147,6 +147,11 @@ venv.bak/
 # SQLite database
 data/*.db
 
+# Security reports
+reports/security/*.json
+reports/security/*.md
+reports/security/*.pdf
+
 # Spyder project settings
 .spyderproject
 .spyproject
