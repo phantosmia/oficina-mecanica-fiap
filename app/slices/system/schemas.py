@@ -14,3 +14,6 @@ class DatabaseStatus(BaseModel):
     path: str
     clients: int
     vehicles: int
+    services: int
+    parts: int
+    service_orders: int

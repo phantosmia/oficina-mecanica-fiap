@@ -3,6 +3,11 @@ services:
     build:
       context: .
     container_name: oficina-mecanica-api
+    environment:
+      ADMIN_USERNAME: admin
+      ADMIN_PASSWORD: Admin@123
+      JWT_SECRET_KEY: change-me-in-production
+      ACCESS_TOKEN_EXPIRE_MINUTES: 60
     ports:
       - "8000:8000"
     volumes:

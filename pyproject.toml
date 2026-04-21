@@ -10,6 +10,24 @@ package-mode = false
 python = "^3.12"
 fastapi = "^0.115.12"
 uvicorn = { version = "^0.34.2", extras = ["standard"] }
+python-jose = { version = "^3.5.0", extras = ["cryptography"] }
+passlib = { version = "^1.7.4", extras = ["bcrypt"] }
+python-multipart = "^0.0.20"
+email-validator = "^2.2.0"
+sqlalchemy = "^2.0.49"
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.3.5"
+pytest-cov = "^6.1.1"
+httpx = "^0.28.1"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=app/slices/service_orders --cov=app/shared --cov=app/slices/clients --cov=app/slices/vehicles --cov=app/slices/parts --cov=app/slices/service_catalog --cov=app/slices/auth --cov-report=term-missing"
+
+[tool.coverage.report]
+fail_under = 80
+skip_covered = true
 
 [build-system]
 requires = ["poetry-core>=2.0.0,<3.0.0"]

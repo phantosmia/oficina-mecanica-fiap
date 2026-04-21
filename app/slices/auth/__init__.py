@@ -1,0 +1,1 @@
+"""Slice de autenticação."""

@@ -1,54 +1,47 @@
+from functools import lru_cache
 from pathlib import Path
 import sqlite3
 
+from sqlalchemy import Engine, create_engine, event
+from sqlalchemy.orm import Session, sessionmaker
+from sqlalchemy.pool import NullPool
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DATA_DIR = BASE_DIR / "data"
-DATABASE_PATH = DATA_DIR / "oficina_mecanica.db"
+from app.shared.models import Base
+from app.shared.settings import settings
 
 
-def get_connection() -> sqlite3.Connection:
-    DATA_DIR.mkdir(parents=True, exist_ok=True)
+def get_database_path() -> Path:
+    return Path(settings.database_path)
 
-    connection = sqlite3.connect(DATABASE_PATH)
-    connection.row_factory = sqlite3.Row
-    connection.execute("PRAGMA foreign_keys = ON")
-    return connection
+
+@lru_cache(maxsize=1)
+def get_engine() -> Engine:
+    database_path = get_database_path()
+    database_path.parent.mkdir(parents=True, exist_ok=True)
+
+    engine = create_engine(
+        f"sqlite:///{database_path}",
+        future=True,
+        poolclass=NullPool,
+    )
+
+    @event.listens_for(engine, "connect")
+    def _set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _: object) -> None:
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys = ON")
+        cursor.close()
+
+    return engine
+
+
+@lru_cache(maxsize=1)
+def get_session_factory() -> sessionmaker[Session]:
+    return sessionmaker(bind=get_engine(), autoflush=False, autocommit=False, expire_on_commit=False)
+
+
+def get_session() -> Session:
+    return get_session_factory()()
 
 
 def init_database() -> None:
-    with get_connection() as connection:
-        cursor = connection.cursor()
-        _drop_legacy_tables(cursor)
-        _create_tables(cursor)
-        connection.commit()
-
-
-def _create_tables(cursor: sqlite3.Cursor) -> None:
-    cursor.executescript(
-        """
-        CREATE TABLE IF NOT EXISTS clients (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            name TEXT NOT NULL,
-            email TEXT UNIQUE,
-            phone TEXT,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        );
-
-        CREATE TABLE IF NOT EXISTS vehicles (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            client_id INTEGER NOT NULL,
-            brand TEXT,
-            model TEXT NOT NULL,
-            year INTEGER,
-            license_plate TEXT UNIQUE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (client_id) REFERENCES clients(id) ON DELETE CASCADE
-        );
-        """
-    )
-
-
-def _drop_legacy_tables(cursor: sqlite3.Cursor) -> None:
-    cursor.execute("DROP TABLE IF EXISTS service_orders")
-    cursor.execute("DROP TABLE IF EXISTS service_orders_legacy")
+    Base.metadata.create_all(bind=get_engine())
