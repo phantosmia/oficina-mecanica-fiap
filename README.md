@@ -68,6 +68,62 @@ Estrutura principal:
 7. aprovação e baixa de estoque
 8. finalização e entrega
 
+## Cálculo da Ordem de Serviço
+
+### Geração automática do orçamento
+
+Quando uma OS é criada, o orçamento é calculado **automaticamente** com base nos serviços e peças inclusos:
+
+#### Fórmula de cálculo
+
+```
+labor_total = Σ (preço_serviço × quantidade_serviço)
+parts_total = Σ (preço_peça × quantidade_peça)
+quote_total = labor_total + parts_total
+```
+
+#### Exemplo prático
+
+Supondo uma OS com:
+- **Serviços**:
+  - Troca de óleo: R$ 150,00 × 1 = R$ 150,00
+  - Revisão de freios: R$ 200,00 × 1 = R$ 200,00
+  - Subtotal de serviços: R$ 350,00
+
+- **Peças**:
+  - Óleo sintético: R$ 45,00 × 4 = R$ 180,00
+  - Filtro de óleo: R$ 25,00 × 1 = R$ 25,00
+  - Pastilha de freio: R$ 180,00 × 1 = R$ 180,00
+  - Subtotal de peças: R$ 385,00
+
+- **Orçamento final**: R$ 350,00 + R$ 385,00 = **R$ 735,00**
+
+### Validações durante o cálculo
+
+1. **Verificação de disponibilidade de serviços**: Verifica se o serviço existe no catálogo e está ativo
+2. **Verificação de estoque**: Garante que há quantidade suficiente de peças em estoque (na criação)
+3. **Preços**: Utiliza os preços atuais do catálogo (serviços e peças) no momento da criação
+
+### Baixa de estoque automática
+
+Ao **aprovar** a OS (transição para `em_execucao`):
+- O sistema verifica novamente se há estoque suficiente
+- Se houver disponibilidade, **reduz automaticamente** a quantidade em estoque
+- Se não houver estoque, retorna erro 409 Conflict
+
+**Exemplo**: Se aprova uma OS com 4 unidades de óleo:
+```
+estoque_anterior = 50
+estoque_após_aprovação = 50 - 4 = 46
+```
+
+### Estrutura do cálculo no banco
+
+Cada item (serviço ou peça) dentro da OS armazena:
+- `quantity`: quantidade do item
+- `unit_price`: preço unitário no momento da criação da OS
+- `subtotal`: quantity × unit_price (calculado e armazenado para auditoria)
+
 ## Como executar localmente
 
 ### 1. Instalar dependências
@@ -113,31 +169,77 @@ Fluxo:
 3. copiar o `access_token`
 4. usar o botão `Authorize` no Swagger
 
-## Endpoints principais
+## Endpoints da API
 
-### Públicos
+A documentação interativa está disponível em `http://localhost:8000/docs` (Swagger UI) e `http://localhost:8000/redoc` (ReDoc).
 
-- `GET /`
-- `GET /health`
-- `GET /db-status`
-- `GET /service-orders/{order_id}/tracking?document_number=...`
+### Endpoints públicos (sem autenticação)
 
-### Administrativos protegidos por JWT
+#### Sistema
+- `GET /` - Retorna mensagem de boas-vindas da API
+- `GET /health` - Verifica saúde da aplicação (utilizado pelo healthcheck do Docker)
+- `GET /db-status` - Verifica status da conexão com o banco de dados
 
-- `POST /auth/token`
-- CRUD de `/clients`
-- CRUD de `/vehicles`
-- CRUD de `/services`
-- CRUD de `/parts`
-- `POST /service-orders`
-- `GET /service-orders`
-- `GET /service-orders/{order_id}`
-- `POST /service-orders/{order_id}/diagnosis`
-- `POST /service-orders/{order_id}/send-quote`
-- `POST /service-orders/{order_id}/approve`
-- `POST /service-orders/{order_id}/finish`
-- `POST /service-orders/{order_id}/deliver`
-- `GET /service-orders/metrics/average-execution-time`
+#### Ordens de Serviço
+- `GET /service-orders/{order_id}/tracking?document_number={cpf_ou_cnpj}` - Consulta pública do andamento de uma OS pelo cliente (não requer autenticação)
+
+---
+
+### Endpoints administrativos (requerem JWT)
+
+**Autenticação**: Todos os endpoints abaixo requerem token JWT. Para obter o token, use:
+- `POST /auth/token` - Faz login com usuário e senha (padrão: `admin` / `Admin@123`)
+
+#### Clientes
+- `GET /clients` - Lista todos os clientes
+- `POST /clients` - Cria novo cliente (requer: name, document_number, email*, phone*)
+- `GET /clients/{client_id}` - Obtém detalhes de um cliente
+- `PUT /clients/{client_id}` - Atualiza dados de um cliente (name*, email*, phone*)
+- `DELETE /clients/{client_id}` - Deleta um cliente
+
+#### Veículos
+- `GET /vehicles` - Lista todos os veículos
+- `POST /vehicles` - Cria novo veículo (requer: client_id, brand, model, year, license_plate)
+- `GET /vehicles/{vehicle_id}` - Obtém detalhes de um veículo
+- `PUT /vehicles/{vehicle_id}` - Atualiza dados de um veículo (brand*, model*, year*, license_plate*)
+- `DELETE /vehicles/{vehicle_id}` - Deleta um veículo
+
+#### Serviços do Catálogo
+- `GET /services` - Lista todos os serviços disponíveis
+- `POST /services` - Cria novo serviço (requer: name, base_price, estimated_minutes; description*, active*)
+- `GET /services/{service_id}` - Obtém detalhes de um serviço
+- `PUT /services/{service_id}` - Atualiza dados de um serviço (name*, base_price*, estimated_minutes*, description*, active*)
+- `DELETE /services/{service_id}` - Deleta um serviço do catálogo
+
+#### Peças e Insumos
+- `GET /parts` - Lista todas as peças
+- `POST /parts` - Cria nova peça (requer: name, sku, unit_price; description*, stock_quantity*, min_stock_level*)
+- `GET /parts/{part_id}` - Obtém detalhes de uma peça
+- `PUT /parts/{part_id}` - Atualiza dados de uma peça (name*, sku*, unit_price*, description*, stock_quantity*, min_stock_level*)
+- `DELETE /parts/{part_id}` - Deleta uma peça
+
+#### Ordens de Serviço
+- `GET /service-orders` - Lista todas as ordens de serviço (resumo)
+- `POST /service-orders` - Cria nova OS (requer: client_id, vehicle_id, problem_description)
+- `GET /service-orders/{order_id}` - Obtém detalhes completos de uma OS
+- `POST /service-orders/{order_id}/diagnosis` - Inicia diagnóstico da OS (requer: diagnosis_notes)
+- `POST /service-orders/{order_id}/send-quote` - Envia orçamento para cliente (requer: diagnosis_notes)
+- `POST /service-orders/{order_id}/approve` - Aprova orçamento e baixa estoque automaticamente
+- `POST /service-orders/{order_id}/finish` - Marca OS como finalizada
+- `POST /service-orders/{order_id}/deliver` - Marca OS como entregue ao cliente
+
+#### Métricas
+- `GET /service-orders/metrics/average-execution-time` - Retorna tempo médio de execução das OSs
+
+---
+
+### Notas sobre os endpoints
+
+- **Campos marcados com \*** são opcionais
+- **Validações automáticas**: CPF/CNPJ, placa de veículo, email
+- **Controle de estoque**: Ao aprovar uma OS, as peças são automaticamente baixadas do estoque
+- **Geração de orçamento**: Calculado automaticamente ao adicionar serviços e peças
+- **Status da OS**: Fluxo obrigatório: recebida → em_diagnostico → aguardando_aprovacao → em_execucao → finalizada → entregue
 
 ## Testes automatizados
 
