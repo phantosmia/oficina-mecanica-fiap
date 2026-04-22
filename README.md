@@ -33,7 +33,53 @@ Foi utilizado **SQLite** por ser um MVP monolítico com foco em simplicidade de 
 
 ## Arquitetura
 
-O projeto está organizado como um monólito com foco no domínio, usando slices por contexto funcional e camadas simples de `router`, `repository` e, quando necessário, `service`.
+O projeto está organizado como um **monólito com slices por contexto funcional**, usando camadas simples de `router`, `repository` e `service` quando necessário.
+
+### Estrutura principal
+
+```
+app/
+├── shared/           # Infraestrutura compartilhada
+│   ├── models.py     # Modelos SQLAlchemy
+│   ├── database.py   # Configuração do banco
+│   ├── security.py   # JWT e autenticação
+│   └── validators.py # Validações de CPF/CNPJ e placa
+└── slices/           # Contextos funcionais
+    ├── auth/         # Autenticação JWT
+    ├── clients/      # Gestão de clientes
+    ├── vehicles/     # Gestão de veículos
+    ├── service_catalog/ # Catálogo de serviços
+    ├── parts/        # Peças e insumos
+    ├── service_orders/ # Ordens de serviço (regras de negócio)
+    └── system/       # Healthcheck e status
+```
+
+### Justificativa da arquitetura de slices
+
+#### Por que slices ao invés de uma arquitetura mais complexa?
+
+1. **Simplicidade para MVP**: Como é um projeto acadêmico e MVP, priorizamos velocidade de desenvolvimento e manutenção simples
+2. **Equipe pequena**: Com uma equipe reduzida, slices permitem desenvolvimento paralelo sem conflitos complexos
+3. **Separação clara de responsabilidades**: Cada slice representa um contexto de negócio bem definido
+4. **Facilita evolução**: Se necessário, cada slice pode ser extraído para um microserviço futuro
+5. **Testabilidade**: Cada slice pode ser testado isoladamente
+
+#### Vantagens dos slices
+
+- **Desenvolvimento paralelo**: Diferentes desenvolvedores podem trabalhar em slices distintos
+- **Manutenção facilitada**: Mudanças em um contexto não afetam outros
+- **Onboarding rápido**: Novos membros entendem rapidamente a estrutura
+- **Performance**: Não há overhead de comunicação entre serviços
+- **Debugging simples**: Problemas ficam isolados em seu contexto
+
+#### Quando considerar evoluir para microserviços
+
+- Quando o monólito ficar muito grande (>100k linhas)
+- Quando diferentes slices tiverem necessidades de escalabilidade distintas
+- Quando houver equipes especializadas por domínio
+- Quando precisar de tecnologias diferentes por contexto
+
+Para este MVP acadêmico, a arquitetura de slices oferece o **equilíbrio perfeito** entre organização, simplicidade e produtividade.
 
 Estrutura principal:
 
