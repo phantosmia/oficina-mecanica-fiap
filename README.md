@@ -93,7 +93,7 @@ Após subir, acesse:
 - `http://localhost:8000/health`
 - `http://localhost:8000/db-status`
 
-O serviço da API também possui `healthcheck` no Compose para facilitar validação do container.
+O container da API agora inclui automaticamente dados de exemplo (clientes, veículos, serviços, peças e ordens de serviço) para facilitar os testes. O serviço da API também possui `healthcheck` no Compose para facilitar validação do container.
 
 Para parar:
 
@@ -146,6 +146,14 @@ Executar:
 `poetry run pytest`
 
 Cobertura atual configurada com mínimo de `80%` para os domínios críticos.
+
+## Popular banco com dados de exemplo
+
+Para testar a aplicação com uma base de dados completa, execute:
+
+`poetry run python scripts/populate_db.py`
+
+Isso criará dados de exemplo incluindo clientes, veículos, serviços do catálogo, peças e ordens de serviço em diferentes status.
 
 ## Relatório de vulnerabilidades
 

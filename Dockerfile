@@ -14,8 +14,10 @@ COPY pyproject.toml poetry.lock README.md ./
 RUN poetry install --only main
 
 COPY app ./app
+COPY scripts ./scripts
+COPY docker-entrypoint.sh ./
 COPY data ./data
 
 EXPOSE 8000
 
-CMD ["poetry", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
+ENTRYPOINT ["./docker-entrypoint.sh"]

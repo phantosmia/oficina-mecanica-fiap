@@ -3,7 +3,6 @@ services:
     build:
       context: .
     container_name: oficina-mecanica-api
-    command: ["poetry", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]
     environment:
       ADMIN_USERNAME: admin
       ADMIN_PASSWORD: Admin@123
