@@ -33,55 +33,70 @@ Foi utilizado **SQLite** por ser um MVP monolítico com foco em simplicidade de 
 
 ## Arquitetura
 
-O projeto está organizado como um **monólito com slices por contexto funcional**, usando camadas simples de `router`, `repository` e `service` quando necessário.
+O projeto está organizado como um **monólito com slices por contexto funcional** e **arquitetura em camadas** dentro de cada slice.
+
+### Camadas
+
+Cada slice segue rigorosamente o fluxo:
+
+```
+router.py  →  service.py  →  repository.py
+ (HTTP)        (negócio)       (dados/DB)
+```
+
+| Camada | Responsabilidade |
+|--------|------------------|
+| **router** | Recebe a requisição HTTP, valida o schema de entrada (Pydantic), delega ao service e devolve o schema de saída |
+| **service** | Contém as regras de negócio, orquestra chamadas ao repository e lança `HTTPException` em caso de erros de domínio |
+| **repository** | Executa queries no banco via SQLAlchemy; retorna `None`/`bool` quando o recurso não existe, sem conhecimento de HTTP |
+| **mapper** | Converte modelos ORM para schemas Pydantic de leitura |
+| **schemas** | Define os contratos de entrada e saída (Pydantic) |
 
 ### Estrutura principal
 
 ```
 app/
-├── shared/           # Infraestrutura compartilhada
-│   ├── models.py     # Modelos SQLAlchemy
-│   ├── database.py   # Configuração do banco
-│   ├── security.py   # JWT e autenticação
-│   └── validators.py # Validações de CPF/CNPJ e placa
-└── slices/           # Contextos funcionais
-    ├── auth/         # Autenticação JWT
-    ├── clients/      # Gestão de clientes
-    ├── vehicles/     # Gestão de veículos
+├── shared/              # Infraestrutura compartilhada
+│   ├── models.py        # Modelos SQLAlchemy
+│   ├── database.py      # Configuração do banco
+│   ├── security.py      # JWT e autenticação
+│   └── validators.py    # Validações de CPF/CNPJ e placa
+└── slices/              # Contextos funcionais
+    ├── auth/            # Autenticação JWT
+    ├── clients/         # Gestão de clientes
+    ├── vehicles/        # Gestão de veículos
     ├── service_catalog/ # Catálogo de serviços
-    ├── parts/        # Peças e insumos
-    ├── service_orders/ # Ordens de serviço (regras de negócio)
-    └── system/       # Healthcheck e status
+    ├── parts/           # Peças e insumos
+    ├── service_orders/  # Ordens de serviço (regras de negócio)
+    └── system/          # Healthcheck e status
 ```
 
-### Justificativa da arquitetura de slices
+Cada slice contém os arquivos:
 
-#### Por que slices ao invés de uma arquitetura mais complexa?
+```
+<slice>/
+├── router.py      # Camada HTTP (FastAPI)
+├── service.py     # Camada de negócio
+├── repository.py  # Camada de dados (SQLAlchemy)
+├── mapper.py      # Conversão ORM → schema
+└── schemas.py     # Contratos Pydantic
+```
 
-1. **Simplicidade para MVP**: Como é um projeto acadêmico e MVP, priorizamos velocidade de desenvolvimento e manutenção simples
-2. **Equipe pequena**: Com uma equipe reduzida, slices permitem desenvolvimento paralelo sem conflitos complexos
-3. **Separação clara de responsabilidades**: Cada slice representa um contexto de negócio bem definido
-4. **Facilita evolução**: Se necessário, cada slice pode ser extraído para um microserviço futuro
-5. **Testabilidade**: Cada slice pode ser testado isoladamente
+### Justificativa da arquitetura
 
-#### Vantagens dos slices
+#### Camadas + Slices: o melhor dos dois modelos
 
-- **Desenvolvimento paralelo**: Diferentes desenvolvedores podem trabalhar em slices distintos
-- **Manutenção facilitada**: Mudanças em um contexto não afetam outros
-- **Onboarding rápido**: Novos membros entendem rapidamente a estrutura
-- **Performance**: Não há overhead de comunicação entre serviços
-- **Debugging simples**: Problemas ficam isolados em seu contexto
+A combinação de **slices por domínio** com **camadas internas** oferece:
 
-#### Quando considerar evoluir para microserviços
+1. **Separação clara de responsabilidades**: cada arquivo tem um único papel bem definido
+2. **Testabilidade**: o repository pode ser substituído por um mock sem alterar o service
+3. **Manutenção simplificada**: erros de negócio ficam no service; queries ficam no repository
+4. **Evolução gradual**: cada slice pode ser extraído para um microserviço sem reescrita
+5. **Onboarding rápido**: a estrutura é previsível em todos os contextos
 
-- Quando o monólito ficar muito grande (>100k linhas)
-- Quando diferentes slices tiverem necessidades de escalabilidade distintas
-- Quando houver equipes especializadas por domínio
-- Quando precisar de tecnologias diferentes por contexto
+#### Por que não Hexagonal ou Clean Architecture?
 
-Para este MVP acadêmico, a arquitetura de slices oferece o **equilíbrio perfeito** entre organização, simplicidade e produtividade.
-
-Estrutura principal:
+Essas arquiteturas são adequadas para sistemas enterprise de longa vida. Para um MVP acadêmico com equipe pequena, o custo de boilerplate (portas, adaptadores, casos de uso formais) supera o benefício. A abordagem adotada entrega a mesma separação de responsabilidades com muito menos indireção.
 
 - `app/shared`: infraestrutura compartilhada, segurança, configuração e validações
 - `app/slices/auth`: autenticação JWT
