@@ -1,1 +1,0 @@
-"""Slices verticais da aplicação."""

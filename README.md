@@ -33,79 +33,76 @@ Foi utilizado **SQLite** por ser um MVP monolítico com foco em simplicidade de 
 
 ## Arquitetura
 
-O projeto está organizado como um **monólito com slices por contexto funcional** e **arquitetura em camadas** dentro de cada slice.
+O projeto adota **Clean Architecture** organizada por **contextos de domínio**. Cada contexto é independente e possui suas próprias quatro camadas internas, com dependências fluindo sempre de fora para dentro (inversão de dependência).
 
-### Camadas
-
-Cada slice segue rigorosamente o fluxo:
+### Regra de dependência
 
 ```
-router.py  →  service.py  →  repository.py
- (HTTP)        (negócio)       (dados/DB)
+controller  →  application  →  domain
+    ↓               ↓
+adapters    →  domain (implements interface)
 ```
 
-| Camada | Responsabilidade |
-|--------|------------------|
-| **router** | Recebe a requisição HTTP, valida o schema de entrada (Pydantic), delega ao service e devolve o schema de saída |
-| **service** | Contém as regras de negócio, orquestra chamadas ao repository e lança `HTTPException` em caso de erros de domínio |
-| **repository** | Executa queries no banco via SQLAlchemy; retorna `None`/`bool` quando o recurso não existe, sem conhecimento de HTTP |
-| **mapper** | Converte modelos ORM para schemas Pydantic de leitura |
-| **schemas** | Define os contratos de entrada e saída (Pydantic) |
+- **Domínio** não conhece nada externo (sem FastAPI, SQLAlchemy, Pydantic)
+- **Application** depende apenas de interfaces abstratas (`IXxxRepository`)
+- **Adapters** implementam as interfaces do domínio (SQLAlchemy, etc.)
+- **Controller** injeta as implementações concretas via `Depends` do FastAPI
 
 ### Estrutura principal
 
 ```
 app/
-├── shared/              # Infraestrutura compartilhada
-│   ├── models.py        # Modelos SQLAlchemy
-│   ├── database.py      # Configuração do banco
-│   ├── security.py      # JWT e autenticação
-│   └── validators.py    # Validações de CPF/CNPJ e placa
-└── slices/              # Contextos funcionais
-    ├── auth/            # Autenticação JWT
-    ├── clients/         # Gestão de clientes
-    ├── vehicles/        # Gestão de veículos
-    ├── service_catalog/ # Catálogo de serviços
-    ├── parts/           # Peças e insumos
-    ├── service_orders/  # Ordens de serviço (regras de negócio)
-    └── system/          # Healthcheck e status
+├── shared/                  # Infraestrutura transversal
+│   ├── models.py            # Modelos SQLAlchemy (ORM)
+│   ├── database.py          # Engine, sessão e get_db()
+│   ├── security.py          # JWT e autenticação
+│   ├── validators.py        # Validações de CPF/CNPJ e placa
+│   ├── exceptions.py        # Erros de domínio (DomainError e subclasses)
+│   └── http_errors.py       # Mapeamento DomainError → HTTPException
+│
+├── auth/                    # Autenticação JWT
+├── clients/                 # Gestão de clientes
+├── vehicles/                # Gestão de veículos
+├── service_catalog/         # Catálogo de serviços
+├── parts/                   # Peças e insumos
+├── service_orders/          # Ordens de serviço
+└── system/                  # Healthcheck e status
 ```
 
-Cada slice contém os arquivos:
+Cada contexto segue a mesma estrutura interna:
 
 ```
-<slice>/
-├── router.py      # Camada HTTP (FastAPI)
-├── service.py     # Camada de negócio
-├── repository.py  # Camada de dados (SQLAlchemy)
-├── mapper.py      # Conversão ORM → schema
-└── schemas.py     # Contratos Pydantic
+<contexto>/
+├── domain/
+│   ├── entity.py         # Entidades puras (dataclasses) — sem ORM ou HTTP
+│   ├── repository.py     # Interface ABC — contrato exigido pelo domínio
+│   └── value_objects.py  # (service_orders) Status e regras de transição
+├── application/
+│   └── use_cases.py      # Casos de uso — orquestram o domínio via interfaces
+├── adapters/
+│   ├── sqlalchemy_repository.py  # Implementação concreta da interface
+│   └── presenter.py              # Converte entidade → schema Pydantic
+├── controller.py          # FastAPI router — injeta repositório via Depends
+└── schemas.py             # Contratos Pydantic de entrada e saída
 ```
 
-### Justificativa da arquitetura
+### Princípios aplicados
 
-#### Camadas + Slices: o melhor dos dois modelos
+| Princípio | Como foi aplicado |
+|-----------|-------------------|
+| **Inversão de dependência** | `application` depende de `IXxxRepository` (ABC); `adapters` implementa a interface; `controller` injeta a implementação concreta |
+| **Isolamento do domínio** | Entidades são `dataclass` puras — nenhum import de FastAPI, SQLAlchemy ou Pydantic no `domain/` |
+| **Casos de uso independentes** | `use_cases.py` lança apenas `DomainError`; a conversão para HTTP fica no `controller` via `domain_error_handler()` |
+| **Substituibilidade** | Qualquer `SqlAlchemyXxxRepository` pode ser trocado por um mock nos testes sem alterar domínio ou casos de uso |
 
-A combinação de **slices por domínio** com **camadas internas** oferece:
-
-1. **Separação clara de responsabilidades**: cada arquivo tem um único papel bem definido
-2. **Testabilidade**: o repository pode ser substituído por um mock sem alterar o service
-3. **Manutenção simplificada**: erros de negócio ficam no service; queries ficam no repository
-4. **Evolução gradual**: cada slice pode ser extraído para um microserviço sem reescrita
-5. **Onboarding rápido**: a estrutura é previsível em todos os contextos
-
-#### Por que não Hexagonal ou Clean Architecture?
-
-Essas arquiteturas são adequadas para sistemas enterprise de longa vida. Para um MVP acadêmico com equipe pequena, o custo de boilerplate (portas, adaptadores, casos de uso formais) supera o benefício. A abordagem adotada entrega a mesma separação de responsabilidades com muito menos indireção.
-
-- `app/shared`: infraestrutura compartilhada, segurança, configuração e validações
-- `app/slices/auth`: autenticação JWT
-- `app/slices/clients`: gestão de clientes
-- `app/slices/vehicles`: gestão de veículos
-- `app/slices/service_catalog`: catálogo de serviços
-- `app/slices/parts`: peças e insumos
-- `app/slices/service_orders`: ordens de serviço e regras de negócio
-- `app/slices/system`: healthcheck e status da aplicação
+- `app/shared`: infraestrutura transversal, segurança, configuração e validações
+- `app/auth`: autenticação JWT
+- `app/clients`: gestão de clientes
+- `app/vehicles`: gestão de veículos
+- `app/service_catalog`: catálogo de serviços
+- `app/parts`: peças e insumos
+- `app/service_orders`: ordens de serviço e regras de negócio
+- `app/system`: healthcheck e status da aplicação
 
 ## Regras principais implementadas
 

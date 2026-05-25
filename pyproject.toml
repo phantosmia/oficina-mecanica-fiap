@@ -26,7 +26,7 @@ reportlab = "^4.4.0"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "--cov=app/slices/service_orders --cov=app/shared --cov=app/slices/clients --cov=app/slices/vehicles --cov=app/slices/parts --cov=app/slices/service_catalog --cov=app/slices/auth --cov-report=term-missing"
+addopts = "--cov=app/service_orders --cov=app/shared --cov=app/clients --cov=app/vehicles --cov=app/parts --cov=app/service_catalog --cov=app/auth --cov=app/system --cov-report=term-missing"
 
 [tool.coverage.report]
 fail_under = 80
