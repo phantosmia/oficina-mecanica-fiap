@@ -16,6 +16,13 @@ class Settings:
     access_token_expire_minutes: int
     admin_username: str
     admin_password: str
+    # SMTP / e-mail
+    smtp_enabled: bool
+    smtp_host: str
+    smtp_port: int
+    smtp_from: str
+    smtp_username: str
+    smtp_password: str
 
 
 settings = Settings(
@@ -26,4 +33,11 @@ settings = Settings(
     access_token_expire_minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")),
     admin_username=os.getenv("ADMIN_USERNAME", "admin"),
     admin_password=os.getenv("ADMIN_PASSWORD", "Admin@123"),
+    # SMTP
+    smtp_enabled=os.getenv("SMTP_ENABLED", "false").lower() == "true",
+    smtp_host=os.getenv("SMTP_HOST", "localhost"),
+    smtp_port=int(os.getenv("SMTP_PORT", "587")),
+    smtp_from=os.getenv("SMTP_FROM", "noreply@oficina.local"),
+    smtp_username=os.getenv("SMTP_USERNAME", ""),
+    smtp_password=os.getenv("SMTP_PASSWORD", ""),
 )

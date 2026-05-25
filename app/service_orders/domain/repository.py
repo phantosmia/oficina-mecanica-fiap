@@ -60,6 +60,12 @@ class IServiceOrderRepository(ABC):
     def list_orders(self) -> list[ServiceOrderEntity]: ...
 
     @abstractmethod
+    def list_active_orders(self) -> list[ServiceOrderEntity]:
+        """Returns orders excluding FINISHED, DELIVERED and REJECTED,
+        sorted by status priority (IN_PROGRESS first) then oldest first."""
+        ...
+
+    @abstractmethod
     def get_order(self, order_id: int) -> ServiceOrderEntity | None: ...
 
     @abstractmethod

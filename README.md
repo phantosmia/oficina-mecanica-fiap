@@ -58,7 +58,9 @@ app/
 │   ├── security.py          # JWT e autenticação
 │   ├── validators.py        # Validações de CPF/CNPJ e placa
 │   ├── exceptions.py        # Erros de domínio (DomainError e subclasses)
-│   └── http_errors.py       # Mapeamento DomainError → HTTPException
+│   ├── http_errors.py       # Mapeamento DomainError → HTTPException
+│   ├── email.py             # Porta IEmailNotifier (ABC) + NullEmailNotifier + templates
+│   └── smtp_notifier.py     # Adaptador SMTP concreto (smtplib)
 │
 ├── auth/                    # Autenticação JWT
 ├── clients/                 # Gestão de clientes
@@ -114,6 +116,7 @@ Cada contexto segue a mesma estrutura interna:
 - `em_execucao`
 - `finalizada`
 - `entregue`
+- `recusada` — orçamento recusado pelo cliente (terminal)
 
 ### Fluxo da OS
 
@@ -285,6 +288,7 @@ A documentação interativa está disponível em `http://localhost:8000/docs` (S
 - `POST /service-orders/{order_id}/approve` - Aprova orçamento e baixa estoque automaticamente
 - `POST /service-orders/{order_id}/finish` - Marca OS como finalizada
 - `POST /service-orders/{order_id}/deliver` - Marca OS como entregue ao cliente
+- `POST /service-orders/{order_id}/reject` - Recusa o orçamento (transição de `aguardando_aprovacao` → `recusada`)
 
 #### Métricas
 - `GET /service-orders/metrics/average-execution-time` - Retorna tempo médio de execução das OSs
@@ -297,7 +301,74 @@ A documentação interativa está disponível em `http://localhost:8000/docs` (S
 - **Validações automáticas**: CPF/CNPJ, placa de veículo, email
 - **Controle de estoque**: Ao aprovar uma OS, as peças são automaticamente baixadas do estoque
 - **Geração de orçamento**: Calculado automaticamente ao adicionar serviços e peças
-- **Status da OS**: Fluxo obrigatório: recebida → em_diagnostico → aguardando_aprovacao → em_execucao → finalizada → entregue
+- **Status da OS**: Fluxo principal: recebida → em_diagnostico → aguardando_aprovacao → em_execucao → finalizada → entregue; orçamento pode ser recusado: aguardando_aprovacao → recusada (terminal)
+- **Listagem ativa** (`GET /service-orders`): retorna apenas OSs não concluídas (exclui `finalizada`, `entregue` e `recusada`), ordenadas por prioridade de status: `em_execucao` → `aguardando_aprovacao` → `em_diagnostico` → `recebida`
+- **Notificações por e-mail**: enviadas automaticamente ao cliente (quando `SMTP_ENABLED=true`) nas transições de status que geram comunicação: envio de orçamento, aprovação, recusa e finalização
+
+## Notificações por e-mail
+
+A API envia e-mails automaticamente ao cliente nas seguintes transições de status:
+
+| Evento | Assunto enviado |
+|---|---|
+| Orçamento enviado (`aguardando_aprovacao`) | Orçamento disponível para aprovação |
+| Orçamento aprovado (`em_execucao`) | Orçamento aprovado — serviço iniciado |
+| Orçamento recusado (`recusada`) | Orçamento recusado |
+| OS finalizada (`finalizada`) | Veículo pronto para retirada |
+
+As notificações são desabilitadas por padrão (`SMTP_ENABLED=false`). Para habilitar, configure as variáveis de ambiente abaixo.
+
+### Variáveis de ambiente SMTP
+
+| Variável | Padrão | Descrição |
+|---|---|---|
+| `SMTP_ENABLED` | `false` | Habilita o envio de e-mails |
+| `SMTP_HOST` | `""` | Endereço do servidor SMTP |
+| `SMTP_PORT` | `587` | Porta SMTP (587 = STARTTLS) |
+| `SMTP_FROM` | `""` | Endereço de origem dos e-mails |
+| `SMTP_USERNAME` | `""` | Usuário de autenticação SMTP |
+| `SMTP_PASSWORD` | `""` | Senha ou senha de app SMTP |
+
+### Provedores compatíveis
+
+| Provedor | `SMTP_HOST` | `SMTP_PORT` |
+|---|---|---|
+| Gmail | `smtp.gmail.com` | `587` |
+| Outlook / Hotmail | `smtp.office365.com` | `587` |
+| SendGrid | `smtp.sendgrid.net` | `587` |
+| Mailtrap (sandbox) | `sandbox.smtp.mailtrap.io` | `587` |
+
+> **Gmail**: é necessário gerar uma **senha de app** em [myaccount.google.com/apppasswords](https://myaccount.google.com/apppasswords) (requer 2FA ativo). Não use a senha normal da conta.
+
+> **Mailtrap**: recomendado para testes — intercepta os e-mails sem entregá-los, permitindo validar os templates sem risco de spam.
+
+### Configuração local (`.env`)
+
+Crie um arquivo `.env` na raiz do projeto (não commitar — já listado no `.gitignore`):
+
+```env
+SMTP_ENABLED=true
+SMTP_HOST=smtp.gmail.com
+SMTP_PORT=587
+SMTP_FROM=seuemail@gmail.com
+SMTP_USERNAME=seuemail@gmail.com
+SMTP_PASSWORD=sua_senha_de_app
+```
+
+### Configuração via Docker Compose
+
+Edite as variáveis no `docker-compose.yml`:
+
+```yaml
+SMTP_ENABLED: "true"
+SMTP_HOST: "smtp.gmail.com"
+SMTP_PORT: "587"
+SMTP_FROM: "seuemail@gmail.com"
+SMTP_USERNAME: "seuemail@gmail.com"
+SMTP_PASSWORD: "sua_senha_de_app"
+```
+
+---
 
 ## Testes automatizados
 

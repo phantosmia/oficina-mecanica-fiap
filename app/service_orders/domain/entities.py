@@ -80,6 +80,7 @@ class ServiceOrderEntity:
     quote_total: float
     client_name: str
     client_document_number: str
+    client_email: str | None
     vehicle_plate: str
     vehicle_model: str
     created_at: datetime

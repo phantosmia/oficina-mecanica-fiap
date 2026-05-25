@@ -9,6 +9,14 @@ services:
       JWT_SECRET_KEY: change-me-in-production
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
       DATABASE_PATH: /app/data/oficina_mecanica.db
+      # Notificações por e-mail (desabilitadas por padrão)
+      # Para habilitar, defina SMTP_ENABLED=true e preencha as demais variáveis
+      SMTP_ENABLED: "false"
+      SMTP_HOST: ""
+      SMTP_PORT: "587"
+      SMTP_FROM: ""
+      SMTP_USERNAME: ""
+      SMTP_PASSWORD: ""
     ports:
       - "8000:8000"
     volumes:

@@ -1,6 +1,6 @@
 from datetime import UTC, datetime
 
-from sqlalchemy import func, select
+from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
 from app.shared.models import (
@@ -41,6 +41,7 @@ def _to_entity(orm: ServiceOrderORM, *, include_items: bool = True) -> ServiceOr
         quote_total=orm.quote_total,
         client_name=orm.client.name,
         client_document_number=orm.client.document_number or "",
+        client_email=orm.client.email,
         vehicle_plate=orm.vehicle.license_plate,
         vehicle_model=orm.vehicle.model,
         created_at=orm.created_at,
@@ -206,6 +207,27 @@ class SqlAlchemyServiceOrderRepository(IServiceOrderRepository):
             .order_by(ServiceOrderORM.id.desc())
         )
         return [_to_entity(o, include_items=False) for o in self._session.scalars(stmt).all()]
+
+    def list_active_orders(self) -> list[ServiceOrderEntity]:
+        _INACTIVE = [
+            ServiceOrderStatus.FINISHED.value,
+            ServiceOrderStatus.DELIVERED.value,
+            ServiceOrderStatus.REJECTED.value,
+        ]
+        _priority = case(
+            (ServiceOrderORM.status == ServiceOrderStatus.IN_PROGRESS.value, 1),
+            (ServiceOrderORM.status == ServiceOrderStatus.WAITING_APPROVAL.value, 2),
+            (ServiceOrderORM.status == ServiceOrderStatus.IN_DIAGNOSIS.value, 3),
+            (ServiceOrderORM.status == ServiceOrderStatus.RECEIVED.value, 4),
+            else_=5,
+        )
+        stmt = (
+            select(ServiceOrderORM)
+            .options(joinedload(ServiceOrderORM.client), joinedload(ServiceOrderORM.vehicle))
+            .where(ServiceOrderORM.status.not_in(_INACTIVE))
+            .order_by(_priority, ServiceOrderORM.created_at.asc())
+        )
+        return [_to_entity(o, include_items=False) for o in self._session.scalars(stmt).unique().all()]
 
     def get_order(self, order_id: int) -> ServiceOrderEntity | None:
         orm = _load_full(self._session, order_id)

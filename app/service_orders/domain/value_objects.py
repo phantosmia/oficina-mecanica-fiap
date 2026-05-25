@@ -10,15 +10,17 @@ class ServiceOrderStatus(StrEnum):
     IN_PROGRESS = "em_execucao"
     FINISHED = "finalizada"
     DELIVERED = "entregue"
+    REJECTED = "recusada"
 
 
 ALLOWED_TRANSITIONS: dict[ServiceOrderStatus, set[ServiceOrderStatus]] = {
     ServiceOrderStatus.RECEIVED: {ServiceOrderStatus.IN_DIAGNOSIS, ServiceOrderStatus.WAITING_APPROVAL},
     ServiceOrderStatus.IN_DIAGNOSIS: {ServiceOrderStatus.WAITING_APPROVAL},
-    ServiceOrderStatus.WAITING_APPROVAL: {ServiceOrderStatus.IN_PROGRESS},
+    ServiceOrderStatus.WAITING_APPROVAL: {ServiceOrderStatus.IN_PROGRESS, ServiceOrderStatus.REJECTED},
     ServiceOrderStatus.IN_PROGRESS: {ServiceOrderStatus.FINISHED},
     ServiceOrderStatus.FINISHED: {ServiceOrderStatus.DELIVERED},
     ServiceOrderStatus.DELIVERED: set(),
+    ServiceOrderStatus.REJECTED: set(),
 }
 
 
