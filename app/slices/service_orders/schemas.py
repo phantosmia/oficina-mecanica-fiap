@@ -1,18 +1,9 @@
 from datetime import datetime
-from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
 from app.shared.validators import validate_document, validate_plate
-
-
-class ServiceOrderStatus(StrEnum):
-    RECEIVED = "recebida"
-    IN_DIAGNOSIS = "em_diagnostico"
-    WAITING_APPROVAL = "aguardando_aprovacao"
-    IN_PROGRESS = "em_execucao"
-    FINISHED = "finalizada"
-    DELIVERED = "entregue"
+from app.slices.service_orders.domain.value_objects import ServiceOrderStatus
 
 
 class ServiceOrderClientInput(BaseModel):

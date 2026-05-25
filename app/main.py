@@ -4,13 +4,13 @@ from fastapi import FastAPI
 
 from app.shared.database import init_database
 from app.shared.settings import settings
-from app.slices.auth.router import router as auth_router
-from app.slices.clients.router import router as clients_router
-from app.slices.parts.router import router as parts_router
-from app.slices.service_catalog.router import router as services_router
-from app.slices.service_orders.router import router as service_orders_router
-from app.slices.system.router import router as system_router
-from app.slices.vehicles.router import router as vehicles_router
+from app.slices.auth.controller import router as auth_router
+from app.slices.clients.controller import router as clients_router
+from app.slices.parts.controller import router as parts_router
+from app.slices.service_catalog.controller import router as services_router
+from app.slices.service_orders.controller import router as service_orders_router
+from app.slices.system.controller import router as system_router
+from app.slices.vehicles.controller import router as vehicles_router
 
 
 @asynccontextmanager

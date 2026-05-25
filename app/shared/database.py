@@ -45,3 +45,12 @@ def get_session() -> Session:
 
 def init_database() -> None:
     Base.metadata.create_all(bind=get_engine())
+
+
+def get_db():
+    """FastAPI dependency that provides a SQLAlchemy session per request."""
+    session = get_session_factory()()
+    try:
+        yield session
+    finally:
+        session.close()
