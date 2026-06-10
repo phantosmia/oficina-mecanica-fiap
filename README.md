@@ -378,6 +378,17 @@ Executar:
 
 Cobertura atual configurada com mínimo de `80%` para os domínios críticos.
 
+## Pipeline automatizada no GitHub
+
+O repositório agora possui uma pipeline de CI em [.github/workflows/ci.yml](.github/workflows/ci.yml) com execução automática em `push`, `pull_request` para `main` e disparo manual via GitHub Actions.
+
+Etapas executadas:
+
+- instalar Python `3.12`
+- instalar dependências com Poetry
+- executar `poetry run pytest` com cobertura mínima configurada no projeto
+- validar o build da imagem Docker com `docker build`
+
 ## Popular banco com dados de exemplo
 
 Para testar a aplicação com uma base de dados completa, execute:
