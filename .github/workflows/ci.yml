@@ -27,7 +27,11 @@ jobs:
           cache: "pip"
 
       - name: Instalar Poetry
-        run: pip install poetry==2.2.1
+        uses: snok/install-poetry@v1
+        with:
+          version: 2.2.1
+          virtualenvs-create: true
+          virtualenvs-in-project: true
 
       - name: Restaurar cache do ambiente virtual
         uses: actions/cache@v4
