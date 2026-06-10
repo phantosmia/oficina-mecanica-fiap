@@ -16,7 +16,7 @@ RUN poetry install --only main
 COPY app ./app
 COPY scripts ./scripts
 COPY docker-entrypoint.sh ./
-COPY data ./data
+RUN mkdir -p ./data
 
 EXPOSE 8000
 
