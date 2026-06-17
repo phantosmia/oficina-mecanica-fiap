@@ -1,37 +1,37 @@
 from functools import lru_cache
-from pathlib import Path
-import sqlite3
+from urllib.parse import urlparse, urlunparse
 
-from sqlalchemy import Engine, create_engine, event
+from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
-from sqlalchemy.pool import NullPool
 
 from app.shared.models import Base
 from app.shared.settings import settings
 
 
-def get_database_path() -> Path:
-    return Path(settings.database_path)
+def get_database_url() -> str:
+    return settings.database_url
+
+
+def get_safe_database_url() -> str:
+    """Retorna a URL do banco sem expor a senha (para logs e endpoints públicos)."""
+    parsed = urlparse(settings.database_url)
+    if parsed.password is None:
+        return settings.database_url
+    netloc = parsed.hostname or ""
+    if parsed.username:
+        netloc = f"{parsed.username}:***@{netloc}"
+    if parsed.port:
+        netloc = f"{netloc}:{parsed.port}"
+    return urlunparse(parsed._replace(netloc=netloc))
 
 
 @lru_cache(maxsize=1)
 def get_engine() -> Engine:
-    database_path = get_database_path()
-    database_path.parent.mkdir(parents=True, exist_ok=True)
-
-    engine = create_engine(
-        f"sqlite:///{database_path}",
+    return create_engine(
+        settings.database_url,
         future=True,
-        poolclass=NullPool,
+        pool_pre_ping=True,
     )
-
-    @event.listens_for(engine, "connect")
-    def _set_sqlite_pragma(dbapi_connection: sqlite3.Connection, _: object) -> None:
-        cursor = dbapi_connection.cursor()
-        cursor.execute("PRAGMA foreign_keys = ON")
-        cursor.close()
-
-    return engine
 
 
 @lru_cache(maxsize=1)

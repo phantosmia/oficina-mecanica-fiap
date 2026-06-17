@@ -1,8 +1,10 @@
-from pathlib import Path
 import os
 
-TEST_DATABASE_PATH = Path(__file__).resolve().parent / "test_oficina_mecanica.db"
-os.environ["DATABASE_PATH"] = str(TEST_DATABASE_PATH)
+# Banco de testes (PostgreSQL). Pode ser sobrescrito via DATABASE_URL no ambiente.
+os.environ.setdefault(
+    "DATABASE_URL",
+    "postgresql+psycopg://oficina:oficina@localhost:5432/oficina_test",
+)
 os.environ["ADMIN_USERNAME"] = "admin"
 os.environ["ADMIN_PASSWORD"] = "Admin@123"
 os.environ["JWT_SECRET_KEY"] = "test-secret-key"
@@ -11,17 +13,17 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.main import app
-from app.shared.database import init_database
+from app.shared.database import get_engine
+from app.shared.models import Base
 
 
 @pytest.fixture(autouse=True)
 def reset_database() -> None:
-    if TEST_DATABASE_PATH.exists():
-        TEST_DATABASE_PATH.unlink()
-    init_database()
+    engine = get_engine()
+    Base.metadata.drop_all(bind=engine)
+    Base.metadata.create_all(bind=engine)
     yield
-    if TEST_DATABASE_PATH.exists():
-        TEST_DATABASE_PATH.unlink()
+    Base.metadata.drop_all(bind=engine)
 
 
 @pytest.fixture

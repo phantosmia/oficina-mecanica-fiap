@@ -11,7 +11,7 @@ class HealthStatus(BaseModel):
 
 class DatabaseStatus(BaseModel):
     database: str
-    path: str
+    connection: str
     clients: int
     vehicles: int
     services: int

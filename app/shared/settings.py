@@ -1,16 +1,26 @@
 from dataclasses import dataclass
-from pathlib import Path
 import os
 
 
-BASE_DIR = Path(__file__).resolve().parent.parent.parent
-DEFAULT_DATABASE_PATH = BASE_DIR / "data" / "oficina_mecanica.db"
+def _build_default_database_url() -> str:
+    """Monta a URL padrão do PostgreSQL a partir de variáveis POSTGRES_*.
+
+    Permite configurar o banco em partes (host, porta, usuário, senha, base)
+    sem precisar montar manualmente uma URL completa. Caso `DATABASE_URL`
+    esteja definida, ela tem precedência e é usada diretamente.
+    """
+    host = os.getenv("POSTGRES_HOST", "localhost")
+    port = os.getenv("POSTGRES_PORT", "5432")
+    user = os.getenv("POSTGRES_USER", "oficina")
+    password = os.getenv("POSTGRES_PASSWORD", "oficina")
+    db = os.getenv("POSTGRES_DB", "oficina_mecanica")
+    return f"postgresql+psycopg://{user}:{password}@{host}:{port}/{db}"
 
 
 @dataclass(frozen=True)
 class Settings:
     app_name: str
-    database_path: str
+    database_url: str
     jwt_secret_key: str
     jwt_algorithm: str
     access_token_expire_minutes: int
@@ -27,7 +37,7 @@ class Settings:
 
 settings = Settings(
     app_name="Oficina Mecânica FIAP API",
-    database_path=os.getenv("DATABASE_PATH", str(DEFAULT_DATABASE_PATH)),
+    database_url=os.getenv("DATABASE_URL", _build_default_database_url()),
     jwt_secret_key=os.getenv("JWT_SECRET_KEY", "change-me-in-production"),
     jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
     access_token_expire_minutes=int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "60")),

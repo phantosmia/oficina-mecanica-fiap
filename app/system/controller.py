@@ -29,7 +29,7 @@ def database_status(repo: ISystemRepository = Depends(_get_repo)) -> DatabaseSta
     entity = GetDatabaseStatusUseCase(repo).execute()
     return DatabaseStatus(
         database=entity.database,
-        path=entity.path,
+        connection=entity.connection,
         clients=entity.clients,
         vehicles=entity.vehicles,
         services=entity.services,

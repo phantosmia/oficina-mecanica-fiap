@@ -275,9 +275,10 @@ class SqlAlchemyServiceOrderRepository(IServiceOrderRepository):
         return _to_entity(orm, include_items=False) if orm else None
 
     def get_average_execution_time(self) -> AverageExecutionTimeData:
-        avg_expr = (
-            (func.julianday(ServiceOrderORM.finished_at) - func.julianday(ServiceOrderORM.started_at)) * 24 * 60
-        )
+        # PostgreSQL: extrai a diferença em segundos do intervalo e converte para minutos
+        avg_expr = func.extract(
+            "epoch", ServiceOrderORM.finished_at - ServiceOrderORM.started_at
+        ) / 60
         condition = ServiceOrderORM.started_at.is_not(None), ServiceOrderORM.finished_at.is_not(None)
         finished_orders = self._session.scalar(select(func.count(ServiceOrderORM.id)).where(*condition)) or 0
         average_minutes = (

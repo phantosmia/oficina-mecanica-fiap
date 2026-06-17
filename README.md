@@ -22,14 +22,21 @@ Esta versão atende os principais requisitos do desafio:
 ## Stack adotada
 
 - FastAPI
-- SQLite
+- PostgreSQL 16 (via Docker)
+- SQLAlchemy 2 + psycopg 3
 - Poetry
 - Pytest
 - JWT
 
 ## Justificativa do banco de dados
 
-Foi utilizado **SQLite** por ser um MVP monolítico com foco em simplicidade de setup, baixo custo operacional e facilidade para execução local e em ambiente acadêmico. Para a primeira versão, o banco atende bem ao volume esperado e permite validar rapidamente o domínio antes de uma evolução futura para um banco cliente-servidor, como PostgreSQL.
+A primeira versão do MVP foi implementada com **SQLite** por simplicidade de setup local. Para esta evolução, o banco foi migrado para **PostgreSQL**, motivado por:
+
+- **Modelo cliente-servidor real**: o PostgreSQL é executado em um processo dedicado (no Compose, no CI e em produção), o que se aproxima do cenário operacional final e elimina particularidades do SQLite (banco em arquivo, locking em escrita concorrente, ausência de tipos ricos).
+- **Concorrência e integridade**: oficinas mecânicas têm múltiplos usuários e fluxos concorrentes (criação de OS, baixa de estoque, atualização de status). O PostgreSQL oferece MVCC, transações reais e checagem de constraints mais robusta — incluindo `ON DELETE CASCADE` e `ON DELETE RESTRICT` honrados nativamente, sem necessidade de `PRAGMA foreign_keys`.
+- **Aderência ao ambiente de execução**: como toda a stack já roda em containers, manter o banco como um serviço separado deixa o ambiente local idêntico ao de CI e ao de produção, evitando o clássico problema de "funciona no SQLite mas quebra no Postgres".
+- **Evolução prevista**: a justificativa anterior já apontava o PostgreSQL como destino natural; esta entrega concretiza essa migração sem alterar a Clean Architecture — apenas a configuração de conexão (`DATABASE_URL`) e o adaptador SQLAlchemy mudaram. Domínio, casos de uso e controllers permanecem intactos.
+- **CI determinístico**: o pipeline sobe um container PostgreSQL **em um passo dedicado e isolado**, antes da execução dos testes, garantindo que o banco é provisionado de forma reproduzível e independente das demais etapas (instalação de dependências, execução de testes e build da imagem).
 
 ## Arquitetura
 
@@ -187,15 +194,29 @@ Cada item (serviço ou peça) dentro da OS armazena:
 
 ## Como executar localmente
 
-### 1. Instalar dependências
+### 1. Subir o banco PostgreSQL
+
+O banco roda como um serviço separado em container. Suba apenas o serviço de banco do Compose:
+
+`docker compose up -d db`
+
+Isso expõe o PostgreSQL em `localhost:5432` com as credenciais padrão:
+
+- usuário: `oficina`
+- senha: `oficina`
+- database: `oficina_mecanica`
+
+### 2. Instalar dependências
 
 `poetry install`
 
-### 2. Rodar a API
+### 3. Rodar a API
 
 `poetry run uvicorn app.main:app --reload`
 
-### 3. Acessar a documentação
+A aplicação lê a conexão a partir da variável de ambiente `DATABASE_URL` (ou das variáveis `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`). Os defaults já apontam para o container do Compose em `localhost:5432`.
+
+### 4. Acessar a documentação
 
 - `http://localhost:8000/docs`
 - `http://localhost:8000/redoc`
@@ -204,17 +225,28 @@ Cada item (serviço ou peça) dentro da OS armazena:
 
 `docker compose up --build`
 
+O Compose sobe **dois serviços**:
+
+- `db`: PostgreSQL 16 com healthcheck e volume persistente (`oficina-pgdata`)
+- `api`: aplicação FastAPI, que só inicia depois que o `db` está saudável (`depends_on: condition: service_healthy`)
+
+O `docker-entrypoint.sh` aguarda explicitamente o PostgreSQL aceitar conexões antes de criar o schema e popular dados de exemplo.
+
 Após subir, acesse:
 
 - `http://localhost:8000/docs`
 - `http://localhost:8000/health`
 - `http://localhost:8000/db-status`
 
-O container da API agora inclui automaticamente dados de exemplo (clientes, veículos, serviços, peças e ordens de serviço) para facilitar os testes. O serviço da API também possui `healthcheck` no Compose para facilitar validação do container.
+O container da API inclui automaticamente dados de exemplo (clientes, veículos, serviços, peças e ordens de serviço) para facilitar os testes. O serviço da API também possui `healthcheck` no Compose para validação do container.
 
 Para parar:
 
 `docker compose down`
+
+Para remover também o volume de dados do banco:
+
+`docker compose down -v`
 
 ## Autenticação administrativa
 
@@ -372,22 +404,38 @@ SMTP_PASSWORD: "sua_senha_de_app"
 
 ## Testes automatizados
 
+Os testes utilizam o mesmo PostgreSQL configurado para a aplicação. Antes de rodar, garanta que há um banco disponível (por exemplo, subindo o serviço do Compose):
+
+`docker compose up -d db`
+
+Por padrão os testes usam `DATABASE_URL=postgresql+psycopg://oficina:oficina@localhost:5432/oficina_test`. Para criar o banco de testes uma única vez:
+
+```
+docker exec -it oficina-mecanica-db \
+  psql -U oficina -d oficina_mecanica -c "CREATE DATABASE oficina_test;"
+```
+
 Executar:
 
 `poetry run pytest`
 
-Cobertura atual configurada com mínimo de `80%` para os domínios críticos.
+A cada teste o schema é recriado (`drop_all` + `create_all`) garantindo isolamento. Cobertura atual configurada com mínimo de `80%` para os domínios críticos.
 
 ## Pipeline automatizada no GitHub
 
-O repositório agora possui uma pipeline de CI em [.github/workflows/ci.yml](.github/workflows/ci.yml) com execução automática em `push`, `pull_request` para `main` e disparo manual via GitHub Actions.
+O repositório possui uma pipeline de CI em [.github/workflows/ci.yml](.github/workflows/ci.yml) com execução automática em `push` e `pull_request`.
 
-Etapas executadas:
+Etapas executadas no job `tests`:
 
-- instalar Python `3.12`
-- instalar dependências com Poetry
-- executar `poetry run pytest` com cobertura mínima configurada no projeto
-- validar o build da imagem Docker com `docker build`
+1. **Subir PostgreSQL (passo dedicado)** — sobe um container `postgres:16-alpine` via `docker run`, configurado com as mesmas credenciais de teste. Este passo é **isolado** dos demais e ocorre antes de qualquer outra etapa que dependa do banco.
+2. **Aguardar PostgreSQL ficar saudável** — espera o healthcheck do container reportar `healthy` antes de prosseguir.
+3. Instalar Python `3.12`, Poetry e dependências do projeto.
+4. Executar `poetry run pytest` com a cobertura mínima configurada, conectado ao banco via `DATABASE_URL`.
+5. Encerrar o container PostgreSQL (executa mesmo em falha).
+
+O job `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
+
+> O passo de subir o banco é intencionalmente separado dos demais passos do CI: isso deixa claro o ciclo de vida do recurso, facilita troubleshooting (basta olhar o log do passo dedicado) e garante que o banco esteja totalmente pronto antes que qualquer dependência ou teste seja executado.
 
 ## Popular banco com dados de exemplo
 
@@ -446,6 +494,7 @@ Isso facilita anexar o relatório em entregas, documentação e evidências do p
 
 ## Observações
 
-- o histórico de clientes, veículos, peças e ordens fica persistido no arquivo SQLite em `data/oficina_mecanica.db`
+- o histórico de clientes, veículos, peças e ordens fica persistido no PostgreSQL (volume `oficina-pgdata` do Compose)
+- a conexão com o banco é configurada via `DATABASE_URL` ou pelas variáveis `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD` e `POSTGRES_DB`
 - o estoque é validado na criação e aprovado com baixa automática ao autorizar a OS
 - a documentação OpenAPI é gerada automaticamente pelo FastAPI

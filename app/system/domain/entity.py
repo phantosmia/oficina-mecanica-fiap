@@ -4,7 +4,7 @@ from dataclasses import dataclass
 @dataclass
 class DatabaseStatusEntity:
     database: str
-    path: str
+    connection: str
     clients: int
     vehicles: int
     services: int
