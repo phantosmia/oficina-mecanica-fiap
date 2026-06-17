@@ -16,7 +16,14 @@ RUN poetry install --only main
 COPY app ./app
 COPY scripts ./scripts
 COPY docker-entrypoint.sh ./
-RUN mkdir -p ./data
+RUN chmod +x docker-entrypoint.sh
+
+# Criar usuário sem privilégios e ajustar permissões do diretório da aplicação
+RUN groupadd --system --gid 1001 app \
+    && useradd --system --uid 1001 --gid app --home-dir /app --shell /usr/sbin/nologin app \
+    && chown -R app:app /app
+
+USER app
 
 EXPOSE 8000
 

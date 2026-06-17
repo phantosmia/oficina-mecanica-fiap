@@ -17,45 +17,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHONPATH: ${{ github.workspace }}
-      POSTGRES_HOST: localhost
-      POSTGRES_PORT: "5432"
-      POSTGRES_USER: oficina
-      POSTGRES_PASSWORD: oficina
-      POSTGRES_DB: oficina_test
-      DATABASE_URL: postgresql+psycopg://oficina:oficina@localhost:5432/oficina_test
 
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
-
-      - name: Subir PostgreSQL (passo dedicado)
-        run: |
-          docker run -d \
-            --name oficina-ci-postgres \
-            -e POSTGRES_USER=$POSTGRES_USER \
-            -e POSTGRES_PASSWORD=$POSTGRES_PASSWORD \
-            -e POSTGRES_DB=$POSTGRES_DB \
-            -p 5432:5432 \
-            --health-cmd "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB" \
-            --health-interval 5s \
-            --health-timeout 3s \
-            --health-retries 10 \
-            postgres:16-alpine
-
-      - name: Aguardar PostgreSQL ficar saudável
-        run: |
-          for i in {1..30}; do
-            status=$(docker inspect --format='{{.State.Health.Status}}' oficina-ci-postgres 2>/dev/null || echo "starting")
-            echo "Tentativa $i — status: $status"
-            if [ "$status" = "healthy" ]; then
-              echo "PostgreSQL pronto."
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "PostgreSQL não ficou saudável a tempo." >&2
-          docker logs oficina-ci-postgres || true
-          exit 1
 
       - name: Configurar Python 3.12
         uses: actions/setup-python@v5
@@ -84,11 +49,11 @@ jobs:
         run: poetry install --with dev
 
       - name: Executar testes com cobertura
+        # O Testcontainers provisiona um PostgreSQL efêmero (postgres:16-alpine)
+        # automaticamente no início da sessão de testes e o destrói ao final.
+        # O Docker já está disponível no runner ubuntu-latest, dispensando um
+        # passo dedicado para subir o banco.
         run: poetry run python -m pytest
-
-      - name: Encerrar PostgreSQL
-        if: always()
-        run: docker rm -f oficina-ci-postgres || true
 
   build:
     name: Build da aplicação

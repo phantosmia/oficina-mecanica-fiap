@@ -232,6 +232,8 @@ O Compose sobe **dois serviços**:
 
 O `docker-entrypoint.sh` aguarda explicitamente o PostgreSQL aceitar conexões antes de criar o schema e popular dados de exemplo.
 
+> **Segurança**: o container da API roda com um usuário sem privilégios (`app`, `uid=1001`), e não como `root`. Isso reduz o impacto de uma eventual escalada de privilégios a partir do processo da aplicação.
+
 Após subir, acesse:
 
 - `http://localhost:8000/docs`
@@ -404,22 +406,20 @@ SMTP_PASSWORD: "sua_senha_de_app"
 
 ## Testes automatizados
 
-Os testes utilizam o mesmo PostgreSQL configurado para a aplicação. Antes de rodar, garanta que há um banco disponível (por exemplo, subindo o serviço do Compose):
-
-`docker compose up -d db`
-
-Por padrão os testes usam `DATABASE_URL=postgresql+psycopg://oficina:oficina@localhost:5432/oficina_test`. Para criar o banco de testes uma única vez:
-
-```
-docker exec -it oficina-mecanica-db \
-  psql -U oficina -d oficina_mecanica -c "CREATE DATABASE oficina_test;"
-```
-
-Executar:
+Os testes utilizam **Testcontainers** para provisionar um PostgreSQL efêmero por execução, eliminando a necessidade de subir o banco manualmente. Basta ter o Docker disponível na máquina e rodar:
 
 `poetry run pytest`
 
-A cada teste o schema é recriado (`drop_all` + `create_all`) garantindo isolamento. Cobertura atual configurada com mínimo de `80%` para os domínios críticos.
+O fluxo automático é:
+
+1. No início da sessão, o `tests/conftest.py` sobe um container `postgres:16-alpine` em uma porta aleatória.
+2. A `DATABASE_URL` da aplicação é configurada para apontar para esse container.
+3. A cada teste, o schema é recriado (`drop_all` + `create_all`) garantindo isolamento.
+4. Ao final da sessão, o container é destruído.
+
+Caso `DATABASE_URL` já esteja definida no ambiente (por exemplo, ao apontar para um banco local existente durante debug), o Testcontainers **não** é acionado e os testes usam a conexão fornecida.
+
+Cobertura mínima configurada: `80%` para os domínios críticos.
 
 ## Pipeline automatizada no GitHub
 
@@ -427,15 +427,10 @@ O repositório possui uma pipeline de CI em [.github/workflows/ci.yml](.github/w
 
 Etapas executadas no job `tests`:
 
-1. **Subir PostgreSQL (passo dedicado)** — sobe um container `postgres:16-alpine` via `docker run`, configurado com as mesmas credenciais de teste. Este passo é **isolado** dos demais e ocorre antes de qualquer outra etapa que dependa do banco.
-2. **Aguardar PostgreSQL ficar saudável** — espera o healthcheck do container reportar `healthy` antes de prosseguir.
-3. Instalar Python `3.12`, Poetry e dependências do projeto.
-4. Executar `poetry run pytest` com a cobertura mínima configurada, conectado ao banco via `DATABASE_URL`.
-5. Encerrar o container PostgreSQL (executa mesmo em falha).
+1. Instalar Python `3.12`, Poetry e dependências do projeto.
+2. Executar `poetry run pytest` com a cobertura mínima configurada. O **Testcontainers** provisiona automaticamente um PostgreSQL `postgres:16-alpine` efêmero no início da sessão de testes (o runner `ubuntu-latest` já possui Docker disponível) e o destrói ao final, dispensando um passo dedicado para gerenciar o banco.
 
 O job `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
-
-> O passo de subir o banco é intencionalmente separado dos demais passos do CI: isso deixa claro o ciclo de vida do recurso, facilita troubleshooting (basta olhar o log do passo dedicado) e garante que o banco esteja totalmente pronto antes que qualquer dependência ou teste seja executado.
 
 ## Popular banco com dados de exemplo
 
