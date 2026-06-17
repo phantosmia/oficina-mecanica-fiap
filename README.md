@@ -36,7 +36,7 @@ A primeira versão do MVP foi implementada com **SQLite** por simplicidade de se
 - **Concorrência e integridade**: oficinas mecânicas têm múltiplos usuários e fluxos concorrentes (criação de OS, baixa de estoque, atualização de status). O PostgreSQL oferece MVCC, transações reais e checagem de constraints mais robusta — incluindo `ON DELETE CASCADE` e `ON DELETE RESTRICT` honrados nativamente, sem necessidade de `PRAGMA foreign_keys`.
 - **Aderência ao ambiente de execução**: como toda a stack já roda em containers, manter o banco como um serviço separado deixa o ambiente local idêntico ao de CI e ao de produção, evitando o clássico problema de "funciona no SQLite mas quebra no Postgres".
 - **Evolução prevista**: a justificativa anterior já apontava o PostgreSQL como destino natural; esta entrega concretiza essa migração sem alterar a Clean Architecture — apenas a configuração de conexão (`DATABASE_URL`) e o adaptador SQLAlchemy mudaram. Domínio, casos de uso e controllers permanecem intactos.
-- **CI determinístico**: o pipeline sobe um container PostgreSQL **em um passo dedicado e isolado**, antes da execução dos testes, garantindo que o banco é provisionado de forma reproduzível e independente das demais etapas (instalação de dependências, execução de testes e build da imagem).
+- **CI determinístico**: o pipeline usa **Testcontainers** para provisionar um PostgreSQL `postgres:16-alpine` efêmero diretamente a partir da suíte de testes (o runner `ubuntu-latest` já possui Docker), garantindo paridade exata com o banco usado em desenvolvimento e produção, sem precisar manter um serviço externo ou um passo dedicado no workflow.
 
 ## Arquitetura
 
