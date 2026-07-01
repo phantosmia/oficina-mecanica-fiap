@@ -66,3 +66,17 @@ jobs:
 
       - name: Construir imagem Docker
         run: docker build -t oficina-mecanica-fiap:ci .
+
+  kubernetes:
+    name: Validar manifests Kubernetes
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Validar kustomize
+        run: kubectl kustomize k8s/

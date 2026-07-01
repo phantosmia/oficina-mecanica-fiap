@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-mecanica-config
+  namespace: oficina-mecanica
+data:
+  ACCESS_TOKEN_EXPIRE_MINUTES: "60"
+  ADMIN_USERNAME: admin
+  JWT_ALGORITHM: HS256
+  POSTGRES_HOST: postgres
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: oficina
+  POSTGRES_DB: oficina_mecanica
+  SMTP_ENABLED: "false"
+  SMTP_HOST: ""
+  SMTP_PORT: "587"
+  SMTP_FROM: ""
+  SMTP_USERNAME: ""

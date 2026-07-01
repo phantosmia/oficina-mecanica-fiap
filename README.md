@@ -250,6 +250,55 @@ Para remover também o volume de dados do banco:
 
 `docker compose down -v`
 
+## Como executar com Kubernetes
+
+Os manifests Kubernetes ficam em `k8s/` e reproduzem a stack do Compose com:
+
+- `Namespace` dedicado (`oficina-mecanica`)
+- `ConfigMap` para variáveis não sensíveis
+- `Secret` para senha do banco, senha administrativa, chave JWT e senha SMTP
+- `StatefulSet` + `Service` para PostgreSQL 16
+- `Deployment` + `Service` para a API FastAPI
+- probes de startup, readiness e liveness em `/health`
+
+### 1. Construir a imagem da API
+
+Para deploy em AWS ou qualquer cluster remoto, publique a imagem no Docker Hub. Troque `SEU_USUARIO_DOCKERHUB` pelo seu nome de usuário e rode:
+
+`docker login`
+
+`docker build -t SEU_USUARIO_DOCKERHUB/oficina-mecanica-fiap:latest .`
+
+`docker push SEU_USUARIO_DOCKERHUB/oficina-mecanica-fiap:latest`
+
+O arquivo `k8s/kustomization.yaml` já está preparado para usar esse repositório. Se quiser testar localmente com Minikube, você pode trocar o valor de `newName` para o seu usuário ou usar `minikube image load`.
+
+### 2. Aplicar os manifests
+
+`kubectl apply -k k8s/`
+
+### 3. Aguardar os pods ficarem prontos
+
+`kubectl get pods -n oficina-mecanica -w`
+
+O container da API usa o mesmo `docker-entrypoint.sh` do Docker Compose: ele aguarda o PostgreSQL, inicializa o schema e popula os dados de exemplo de forma idempotente.
+
+### 4. Acessar a API
+
+`kubectl port-forward -n oficina-mecanica svc/oficina-mecanica-api 8000:8000`
+
+Após o port-forward, acesse:
+
+- `http://localhost:8000/docs`
+- `http://localhost:8000/health`
+- `http://localhost:8000/db-status`
+
+Para remover os recursos:
+
+`kubectl delete -k k8s/`
+
+> **Segurança**: os valores em `k8s/secret.yaml` são os mesmos defaults do ambiente local. Em ambientes reais, substitua esses valores por segredos gerenciados pelo cluster ou por uma ferramenta de secrets antes de aplicar os manifests.
+
 ## Autenticação administrativa
 
 Credenciais padrão no `docker-compose.yml`:
