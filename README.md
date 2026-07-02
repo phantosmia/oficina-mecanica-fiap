@@ -285,13 +285,17 @@ O container da API usa o mesmo `docker-entrypoint.sh` do Docker Compose: ele agu
 
 ### 4. Acessar a API
 
-`kubectl port-forward -n oficina-mecanica svc/oficina-mecanica-api 8000:8000`
+`minikube service oficina-mecanica-api -n oficina-mecanica --url`
 
-Após o port-forward, acesse:
+O comando retorna a URL de acesso da API (NodePort). Você também pode consultar o NodePort com:
 
-- `http://localhost:8000/docs`
-- `http://localhost:8000/health`
-- `http://localhost:8000/db-status`
+`kubectl get svc oficina-mecanica-api -n oficina-mecanica`
+
+Depois, acesse:
+
+- `<URL_DO_NODEPORT>/docs`
+- `<URL_DO_NODEPORT>/health`
+- `<URL_DO_NODEPORT>/db-status`
 
 Para remover os recursos:
 
