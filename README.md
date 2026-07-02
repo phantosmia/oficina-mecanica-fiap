@@ -252,7 +252,13 @@ Para remover também o volume de dados do banco:
 
 ## Como executar com Kubernetes
 
-Os manifests Kubernetes ficam em `k8s/` e reproduzem a stack do Compose com:
+Os manifests Kubernetes estão organizados em base + overlays:
+
+- `k8s/base`: recursos comuns da aplicação
+- `k8s/overlays/local`: exposição da API via `NodePort` (Minikube)
+- `k8s/overlays/aws`: exposição da API via `LoadBalancer` (AWS/EKS)
+
+A stack continua equivalente ao Compose, com:
 
 - `Namespace` dedicado (`oficina-mecanica`)
 - `ConfigMap` para variáveis não sensíveis
@@ -271,11 +277,11 @@ Para deploy em AWS ou qualquer cluster remoto, publique a imagem no Docker Hub. 
 
 `docker push SEU_USUARIO_DOCKERHUB/oficina-mecanica-fiap:latest`
 
-O arquivo `k8s/kustomization.yaml` já está preparado para usar esse repositório. Se quiser testar localmente com Minikube, você pode trocar o valor de `newName` para o seu usuário ou usar `minikube image load`.
+Os overlays `k8s/overlays/local` e `k8s/overlays/aws` já estão preparados para imagem no Docker Hub. Ajuste `newName` no `kustomization.yaml` de cada overlay para o seu usuário/repositório, se necessário.
 
-### 2. Aplicar os manifests
+### 2. Aplicar os manifests (ambiente local com Minikube)
 
-`kubectl apply -k k8s/`
+`kubectl apply -k k8s/overlays/local`
 
 ### 3. Aguardar os pods ficarem prontos
 
@@ -297,9 +303,29 @@ Depois, acesse:
 - `<URL_DO_NODEPORT>/health`
 - `<URL_DO_NODEPORT>/db-status`
 
+### 5. Aplicar no AWS/EKS
+
+No AWS, use o overlay com `Service` do tipo `LoadBalancer`:
+
+`kubectl apply -k k8s/overlays/aws`
+
+Depois, obtenha o endpoint externo:
+
+`kubectl get svc oficina-mecanica-api -n oficina-mecanica`
+
+Quando o campo `EXTERNAL-IP` estiver preenchido, acesse:
+
+- `http://<EXTERNAL-IP>/docs`
+- `http://<EXTERNAL-IP>/health`
+- `http://<EXTERNAL-IP>/db-status`
+
 Para remover os recursos:
 
-`kubectl delete -k k8s/`
+`kubectl delete -k k8s/overlays/local`
+
+ou
+
+`kubectl delete -k k8s/overlays/aws`
 
 > **Segurança**: os valores em `k8s/secret.yaml` são os mesmos defaults do ambiente local. Em ambientes reais, substitua esses valores por segredos gerenciados pelo cluster ou por uma ferramenta de secrets antes de aplicar os manifests.
 
