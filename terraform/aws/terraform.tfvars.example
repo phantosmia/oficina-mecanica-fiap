@@ -1,0 +1,22 @@
+aws_region          = "us-east-1"
+environment         = "dev"
+cluster_name        = "oficina-mecanica-dev"
+kubernetes_version  = "1.30"
+node_instance_types = ["t3.medium"]
+node_desired_size   = 2
+node_min_size       = 1
+node_max_size       = 3
+node_disk_size      = 30
+rds_instance_class  = "db.t4g.micro"
+rds_deletion_protection = false
+github_repository   = "phantosmia/oficina-mecanica-fiap"
+github_branch       = "main"
+# Troque estes valores em ambientes reais.
+jwt_secret_key      = "change-me-in-production"
+admin_password      = "Admin@123"
+smtp_password       = ""
+
+tags = {
+  Owner      = "seu-usuario"
+  CostCenter = "fiap"
+}

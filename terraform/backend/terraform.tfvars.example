@@ -1,0 +1,10 @@
+aws_region        = "us-east-1"
+state_bucket_name = "oficina-mecanica-fiap-terraform-state-SEU-SUFIXO-UNICO"
+lock_table_name   = "oficina-mecanica-fiap-terraform-locks"
+force_destroy     = false
+
+tags = {
+  Project     = "oficina-mecanica-fiap"
+  Environment = "dev"
+  ManagedBy   = "Terraform"
+}

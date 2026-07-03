@@ -256,7 +256,7 @@ Os manifests Kubernetes estão organizados em base + overlays:
 
 - `k8s/base`: recursos comuns da aplicação
 - `k8s/overlays/local`: exposição da API via `NodePort` (Minikube)
-- `k8s/overlays/aws`: exposição da API via `LoadBalancer` (AWS/EKS)
+- `k8s/overlays/aws`: exposição da API via `Ingress` com AWS Load Balancer Controller (AWS/EKS)
 
 A stack continua equivalente ao Compose, com:
 
@@ -305,19 +305,83 @@ Depois, acesse:
 
 ### 5. Aplicar no AWS/EKS
 
-No AWS, use o overlay com `Service` do tipo `LoadBalancer`:
+O projeto agora inclui infraestrutura Terraform em `terraform/aws` para criar:
+
+- VPC dedicada
+- cluster EKS
+- node group gerenciado
+- repositório ECR para a imagem da API
+- banco PostgreSQL em Amazon RDS
+- IAM/IRSA para o AWS Load Balancer Controller
+- AWS Secrets Manager + External Secrets Operator para informações sensíveis da API
+- role OIDC para o GitHub Actions publicar imagens no ECR
+
+Fluxo sugerido:
+
+1. criar o backend remoto em `terraform/backend` (S3 para state e DynamoDB para lock)
+2. copiar `terraform/aws/backend.hcl.example` para `terraform/aws/backend.hcl` e ajustar bucket/região/tabela
+3. copiar `terraform/aws/terraform.tfvars.example` para `terraform/aws/terraform.tfvars`
+4. ajustar região, nome do cluster e tamanho do node group
+5. executar `terraform init -backend-config=backend.hcl`, `terraform plan` e `terraform apply` em `terraform/aws`
+6. configurar o kubeconfig usando o comando retornado pelo Terraform
+7. autenticar no ECR usando o comando retornado em `terraform output ecr_login_command`
+8. buildar e publicar a imagem no ECR retornado em `terraform output ecr_repository_url`
+9. atualizar `k8s/overlays/aws/kustomization.yaml` com a URL do ECR
+10. atualizar `k8s/overlays/aws/patch-configmap-rds.yaml` com o endpoint do RDS
+11. atualizar `k8s/overlays/aws/external-secret.yaml` e `k8s/overlays/aws/service-account.yaml` com os outputs de Secrets Manager/IRSA
+12. aplicar o overlay AWS no cluster
+
+Exemplo de provisionamento:
+
+`cd terraform/backend`
+
+`cp terraform.tfvars.example terraform.tfvars`
+
+`terraform init`
+
+`terraform plan`
+
+`terraform apply`
+
+Depois, configure a stack AWS principal:
+
+`cd ../aws`
+
+`cp backend.hcl.example backend.hcl`
+
+`cp terraform.tfvars.example terraform.tfvars`
+
+`terraform init -backend-config=backend.hcl`
+
+`terraform plan`
+
+`terraform apply`
+
+Depois do apply, configure o acesso ao cluster:
+
+`aws eks update-kubeconfig --region us-east-1 --name oficina-mecanica-dev`
+
+Faça login no ECR, publique a imagem e aplique o overlay AWS:
+
+`docker build -t oficina-mecanica-fiap:latest .`
+
+`docker tag oficina-mecanica-fiap:latest <ECR_REPOSITORY_URL>:latest`
+
+`docker push <ECR_REPOSITORY_URL>:latest`
+
+No AWS, use o overlay com `Ingress` e RDS:
 
 `kubectl apply -k k8s/overlays/aws`
 
-Depois, obtenha o endpoint externo:
+No overlay AWS, a API é exposta por `Ingress` com AWS Load Balancer Controller. Obtenha o endpoint externo com:
 
-`kubectl get svc oficina-mecanica-api -n oficina-mecanica`
+`kubectl get ingress oficina-mecanica-api -n oficina-mecanica`
 
-Quando o campo `EXTERNAL-IP` estiver preenchido, acesse:
+Quando o campo `ADDRESS` estiver preenchido, acesse:
 
-- `http://<EXTERNAL-IP>/docs`
-- `http://<EXTERNAL-IP>/health`
-- `http://<EXTERNAL-IP>/db-status`
+- `http://<ADDRESS>/docs`
+- `http://<ADDRESS>/health`
+- `http://<ADDRESS>/db-status`
 
 Para remover os recursos:
 
@@ -328,6 +392,8 @@ ou
 `kubectl delete -k k8s/overlays/aws`
 
 > **Segurança**: os valores em `k8s/secret.yaml` são os mesmos defaults do ambiente local. Em ambientes reais, substitua esses valores por segredos gerenciados pelo cluster ou por uma ferramenta de secrets antes de aplicar os manifests.
+
+> **Observação**: no overlay local, o PostgreSQL roda no cluster via `StatefulSet`. No overlay AWS, o PostgreSQL interno é removido e a API aponta para o Amazon RDS criado pelo Terraform.
 
 ## Autenticação administrativa
 

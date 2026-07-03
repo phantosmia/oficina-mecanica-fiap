@@ -1,0 +1,5 @@
+bucket         = "oficina-mecanica-fiap-terraform-state"
+key            = "aws/dev/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "oficina-mecanica-fiap-terraform-locks"
+encrypt        = true
