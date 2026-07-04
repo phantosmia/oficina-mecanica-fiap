@@ -28,13 +28,14 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  AWS_AUTH_MODE: ${{ inputs.auth_mode || vars.AWS_AUTH_MODE || 'oidc' }}
+  AWS_AUTH_MODE: ${{ inputs.auth_mode || vars.AWS_AUTH_MODE || 'aws-academy' }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'oficina-mecanica-fiap' }}
 
 jobs:
   publish:
     name: Build and push Docker image
     runs-on: ubuntu-latest
+    environment: aws
 
     steps:
       - name: Checkout do código

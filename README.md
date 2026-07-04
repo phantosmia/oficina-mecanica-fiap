@@ -728,7 +728,7 @@ O deploy faz, em ordem:
 10. `kubectl apply -k k8s/overlays/<deployment_mode>`;
 11. espera do Job de migrations, rollout da API e, no modo `aws-academy`, ajuste automático do `PUBLIC_BASE_URL` com o hostname do `LoadBalancer`.
 
-O workflow [.github/workflows/publish-ecr.yml](.github/workflows/publish-ecr.yml) também suporta o lab: execute manualmente com `auth_mode=aws-academy` ou defina a variable `AWS_AUTH_MODE=aws-academy` para usar as secrets temporárias do AWS Academy em pushes para `main`.
+O workflow [.github/workflows/publish-ecr.yml](.github/workflows/publish-ecr.yml) também suporta o lab e usa o environment `aws`. Em pushes para `main`, o padrão é `AWS_AUTH_MODE=aws-academy`; para usar OIDC em uma AWS sem restrições de IAM, defina a variable `AWS_AUTH_MODE=oidc` e configure `AWS_ROLE_TO_ASSUME`.
 
 ## Popular banco com dados de exemplo
 
