@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: oficina-mecanica-config
+  namespace: oficina-mecanica
+data:
+  PUBLIC_BASE_URL: http://localhost:8000
+  POSTGRES_HOST: REPLACE_WITH_RDS_ENDPOINT
+  POSTGRES_PORT: "5432"
+  POSTGRES_USER: oficina
+  POSTGRES_DB: oficina_mecanica

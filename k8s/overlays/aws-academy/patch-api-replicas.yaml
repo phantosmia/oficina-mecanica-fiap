@@ -1,0 +1,7 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-mecanica-api
+  namespace: oficina-mecanica
+spec:
+  replicas: 2
