@@ -27,6 +27,7 @@ services:
       ADMIN_PASSWORD: Admin@123
       JWT_SECRET_KEY: change-me-in-production
       ACCESS_TOKEN_EXPIRE_MINUTES: 60
+      PUBLIC_BASE_URL: http://localhost:8000
       POSTGRES_HOST: db
       POSTGRES_PORT: "5432"
       POSTGRES_USER: oficina

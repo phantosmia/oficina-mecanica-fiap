@@ -1,4 +1,13 @@
 from fastapi.testclient import TestClient
+from sqlalchemy import select
+
+from app.shared.database import get_session
+from app.shared.models import ServiceOrder
+
+
+def _get_quote_token(order_id: int) -> str | None:
+    with get_session() as session:
+        return session.scalar(select(ServiceOrder.quote_token).where(ServiceOrder.id == order_id))
 
 
 def test_admin_routes_require_authentication(client: TestClient) -> None:
@@ -161,15 +170,110 @@ def test_service_order_rejection_flow(client: TestClient, admin_headers: dict[st
     )
     assert quote_response.status_code == 200
     assert quote_response.json()["status"] == "aguardando_aprovacao"
+    token = _get_quote_token(order_id)
+    assert token is not None
 
-    rejection_response = client.post(f"/service-orders/{order_id}/reject", headers=admin_headers)
+    rejection_response = client.post(
+        f"/service-orders/{order_id}/quote-response",
+        json={"token": token, "decision": "reject"},
+    )
     assert rejection_response.status_code == 200
     assert rejection_response.json()["status"] == "recusada"
+    assert _get_quote_token(order_id) is None
 
     list_orders_response = client.get("/service-orders", headers=admin_headers)
     assert list_orders_response.status_code == 200
     listed_ids = {order["id"] for order in list_orders_response.json()}
     assert order_id not in listed_ids
+
+
+def test_public_quote_response_approves_with_token(client: TestClient, admin_headers: dict[str, str]) -> None:
+    service_response = client.post(
+        "/services",
+        json={
+            "name": "Troca de pastilha",
+            "description": "Substituição de pastilhas dianteiras",
+            "base_price": 120.0,
+            "estimated_minutes": 50,
+            "active": True,
+        },
+        headers=admin_headers,
+    )
+    assert service_response.status_code == 201
+    service_id = service_response.json()["id"]
+
+    part_response = client.post(
+        "/parts",
+        json={
+            "name": "Pastilha de freio",
+            "sku": "PAST-FREIO",
+            "description": "Jogo dianteiro",
+            "unit_price": 90.0,
+            "stock_quantity": 3,
+            "min_stock_level": 1,
+        },
+        headers=admin_headers,
+    )
+    assert part_response.status_code == 201
+    part_id = part_response.json()["id"]
+
+    order_response = client.post(
+        "/service-orders",
+        json={
+            "client": {
+                "name": "Ana Costa",
+                "document_number": "529.982.247-25",
+                "email": "ana@example.com",
+                "phone": "+5511666666666",
+            },
+            "vehicle": {
+                "plate": "JKL1234",
+                "brand": "Toyota",
+                "model": "Corolla",
+                "year": 2021,
+            },
+            "problem_description": "Ruído ao frear",
+            "requested_services": [{"service_id": service_id, "quantity": 1}],
+            "requested_parts": [{"part_id": part_id, "quantity": 1}],
+        },
+        headers=admin_headers,
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    quote_response = client.post(
+        f"/service-orders/{order_id}/send-quote",
+        json={"diagnosis_notes": "Pastilhas dianteiras no limite de desgaste."},
+        headers=admin_headers,
+    )
+    assert quote_response.status_code == 200
+    token = _get_quote_token(order_id)
+    assert token is not None
+
+    invalid_token_response = client.post(
+        f"/service-orders/{order_id}/quote-response",
+        json={"token": "invalid-token-value-with-enough-length", "decision": "approve"},
+    )
+    assert invalid_token_response.status_code == 403
+
+    approval_response = client.post(
+        f"/service-orders/{order_id}/quote-response",
+        json={"token": token, "decision": "approve"},
+    )
+    assert approval_response.status_code == 200
+    assert approval_response.json()["status"] == "em_execucao"
+
+    assert _get_quote_token(order_id) is None
+
+    reuse_response = client.post(
+        f"/service-orders/{order_id}/quote-response",
+        json={"token": token, "decision": "reject"},
+    )
+    assert reuse_response.status_code == 403
+
+    part_detail = client.get(f"/parts/{part_id}", headers=admin_headers)
+    assert part_detail.status_code == 200
+    assert part_detail.json()["stock_quantity"] == 2
 
 
 def test_client_and_vehicle_crud(client: TestClient, admin_headers: dict[str, str]) -> None:

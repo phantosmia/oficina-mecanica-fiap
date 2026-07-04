@@ -210,13 +210,19 @@ Isso expõe o PostgreSQL em `localhost:5432` com as credenciais padrão:
 
 `poetry install`
 
-### 3. Rodar a API
+### 3. Aplicar migrations
+
+`poetry run alembic upgrade head`
+
+As migrations usam a mesma configuração de banco da aplicação (`DATABASE_URL` ou variáveis `POSTGRES_*`).
+
+### 4. Rodar a API
 
 `poetry run uvicorn app.main:app --reload`
 
 A aplicação lê a conexão a partir da variável de ambiente `DATABASE_URL` (ou das variáveis `POSTGRES_HOST`, `POSTGRES_PORT`, `POSTGRES_USER`, `POSTGRES_PASSWORD`, `POSTGRES_DB`). Os defaults já apontam para o container do Compose em `localhost:5432`.
 
-### 4. Acessar a documentação
+### 5. Acessar a documentação
 
 - `http://localhost:8000/docs`
 - `http://localhost:8000/redoc`
@@ -230,7 +236,7 @@ O Compose sobe **dois serviços**:
 - `db`: PostgreSQL 16 com healthcheck e volume persistente (`oficina-pgdata`)
 - `api`: aplicação FastAPI, que só inicia depois que o `db` está saudável (`depends_on: condition: service_healthy`)
 
-O `docker-entrypoint.sh` aguarda explicitamente o PostgreSQL aceitar conexões antes de criar o schema e popular dados de exemplo.
+O `docker-entrypoint.sh` aguarda explicitamente o PostgreSQL aceitar conexões, aplica as migrations com Alembic e popula dados de exemplo.
 
 > **Segurança**: o container da API roda com um usuário sem privilégios (`app`, `uid=1001`), e não como `root`. Isso reduz o impacto de uma eventual escalada de privilégios a partir do processo da aplicação.
 
@@ -264,6 +270,7 @@ A stack continua equivalente ao Compose, com:
 - `ConfigMap` para variáveis não sensíveis
 - `Secret` para senha do banco, senha administrativa, chave JWT e senha SMTP
 - `StatefulSet` + `Service` para PostgreSQL 16
+- `Job` para aplicar migrations do Alembic antes da API atender tráfego
 - `Deployment` + `Service` para a API FastAPI
 - 2 réplicas da API nos overlays `local` e `aws`
 - `HorizontalPodAutoscaler` para escalar a API de 2 a 5 pods por CPU/memória
@@ -283,11 +290,23 @@ Os overlays `k8s/overlays/local` e `k8s/overlays/aws` já estão preparados para
 
 ### 2. Aplicar os manifests (ambiente local com Minikube)
 
+Para garantir que o Job de migrations execute a versão mais recente da imagem, remova o Job anterior antes de aplicar o overlay:
+
+`kubectl delete job oficina-mecanica-migrations -n oficina-mecanica --ignore-not-found`
+
 `kubectl apply -k k8s/overlays/local`
+
+O `Deployment` da API possui um `initContainer` que aguarda o banco estar na revisão `head` do Alembic antes de iniciar os containers da aplicação.
 
 ### 3. Aguardar os pods ficarem prontos
 
 `kubectl get pods -n oficina-mecanica -w`
+
+Para verificar as migrations:
+
+`kubectl get job oficina-mecanica-migrations -n oficina-mecanica`
+
+`kubectl logs job/oficina-mecanica-migrations -n oficina-mecanica`
 
 Para verificar o Deployment, o ReplicaSet gerenciado por ele e as réplicas da API:
 
@@ -307,7 +326,7 @@ O `HorizontalPodAutoscaler` usa as métricas de CPU e memória do cluster para a
 
 `minikube addons enable metrics-server`
 
-O container da API usa o mesmo `docker-entrypoint.sh` do Docker Compose: ele aguarda o PostgreSQL, inicializa o schema e popula os dados de exemplo de forma idempotente.
+No Kubernetes, as migrations são aplicadas pelo `Job` `oficina-mecanica-migrations`. O container da API aguarda o PostgreSQL, espera o banco estar migrado pelo `initContainer` e popula os dados de exemplo de forma idempotente.
 
 ### 4. Acessar a API
 
@@ -348,9 +367,13 @@ Fluxo sugerido:
 7. autenticar no ECR usando o comando retornado em `terraform output ecr_login_command`
 8. buildar e publicar a imagem no ECR retornado em `terraform output ecr_repository_url`
 9. atualizar `k8s/overlays/aws/kustomization.yaml` com a URL do ECR
-10. atualizar `k8s/overlays/aws/patch-configmap-rds.yaml` com o endpoint do RDS
+10. atualizar `k8s/overlays/aws/patch-configmap-rds.yaml` com o endpoint do RDS e a URL pública da API (`PUBLIC_BASE_URL`)
 11. atualizar `k8s/overlays/aws/external-secret.yaml` e `k8s/overlays/aws/service-account.yaml` com os outputs de Secrets Manager/IRSA
-12. aplicar o overlay AWS no cluster
+12. remover o Job antigo de migrations e aplicar o overlay AWS no cluster
+
+`kubectl delete job oficina-mecanica-migrations -n oficina-mecanica --ignore-not-found`
+
+`kubectl apply -k k8s/overlays/aws`
 
 Exemplo de provisionamento:
 
@@ -443,6 +466,18 @@ A documentação interativa está disponível em `http://localhost:8000/docs` (S
 
 #### Ordens de Serviço
 - `GET /service-orders/{order_id}/tracking?document_number={cpf_ou_cnpj}` - Consulta pública do andamento de uma OS pelo cliente (não requer autenticação)
+- `POST /service-orders/{order_id}/quote-response` - Aprova ou recusa orçamento com token público enviado por e-mail (não requer autenticação)
+
+Payload para resposta de orçamento:
+
+```json
+{
+  "token": "token_recebido_no_email",
+  "decision": "approve"
+}
+```
+
+Use `decision: "approve"` para aprovar o orçamento ou `decision: "reject"` para recusá-lo. O token é gerado quando o endpoint administrativo `POST /service-orders/{order_id}/send-quote` envia o orçamento, fica vinculado à OS e é invalidado após a primeira aprovação ou recusa.
 
 ---
 
@@ -504,6 +539,7 @@ A documentação interativa está disponível em `http://localhost:8000/docs` (S
 - **Status da OS**: Fluxo principal: recebida → em_diagnostico → aguardando_aprovacao → em_execucao → finalizada → entregue; orçamento pode ser recusado: aguardando_aprovacao → recusada (terminal)
 - **Listagem ativa** (`GET /service-orders`): retorna apenas OSs não concluídas (exclui `finalizada`, `entregue` e `recusada`), ordenadas por prioridade de status: `em_execucao` → `aguardando_aprovacao` → `em_diagnostico` → `recebida`
 - **Notificações por e-mail**: enviadas automaticamente ao cliente (quando `SMTP_ENABLED=true`) nas transições de status que geram comunicação: envio de orçamento, aprovação, recusa e finalização
+- **Aprovação/recusa externa**: o e-mail de orçamento inclui o endpoint público `POST /service-orders/{order_id}/quote-response` e o token necessário para a decisão do cliente
 
 ## Notificações por e-mail
 
@@ -528,6 +564,7 @@ As notificações são desabilitadas por padrão (`SMTP_ENABLED=false`). Para ha
 | `SMTP_FROM` | `""` | Endereço de origem dos e-mails |
 | `SMTP_USERNAME` | `""` | Usuário de autenticação SMTP |
 | `SMTP_PASSWORD` | `""` | Senha ou senha de app SMTP |
+| `PUBLIC_BASE_URL` | `http://localhost:8000` | URL pública da API usada no e-mail de aprovação/recusa |
 
 ### Provedores compatíveis
 
@@ -553,6 +590,7 @@ SMTP_PORT=587
 SMTP_FROM=seuemail@gmail.com
 SMTP_USERNAME=seuemail@gmail.com
 SMTP_PASSWORD=sua_senha_de_app
+PUBLIC_BASE_URL=https://api.sua-oficina.com
 ```
 
 ### Configuração via Docker Compose
@@ -566,6 +604,7 @@ SMTP_PORT: "587"
 SMTP_FROM: "seuemail@gmail.com"
 SMTP_USERNAME: "seuemail@gmail.com"
 SMTP_PASSWORD: "sua_senha_de_app"
+PUBLIC_BASE_URL: "https://api.sua-oficina.com"
 ```
 
 ---
@@ -580,7 +619,7 @@ O fluxo automático é:
 
 1. No início da sessão, o `tests/conftest.py` sobe um container `postgres:16-alpine` em uma porta aleatória.
 2. A `DATABASE_URL` da aplicação é configurada para apontar para esse container.
-3. A cada teste, o schema é recriado (`drop_all` + `create_all`) garantindo isolamento.
+3. A cada teste, o schema é resetado por migrations (`alembic downgrade base` + `alembic upgrade head`) garantindo isolamento e validando o versionamento real do banco.
 4. Ao final da sessão, o container é destruído.
 
 Caso `DATABASE_URL` já esteja definida no ambiente (por exemplo, ao apontar para um banco local existente durante debug), o Testcontainers **não** é acionado e os testes usam a conexão fornecida.

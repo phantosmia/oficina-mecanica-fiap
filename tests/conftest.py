@@ -26,10 +26,14 @@ os.environ["JWT_SECRET_KEY"] = "test-secret-key"
 
 from fastapi.testclient import TestClient
 import pytest
+from alembic import command
+from alembic.config import Config
 
 from app.main import app
-from app.shared.database import get_engine
-from app.shared.models import Base
+
+
+def _alembic_config() -> Config:
+    return Config("alembic.ini")
 
 
 def pytest_sessionfinish(session, exitstatus) -> None:  # noqa: ARG001
@@ -39,11 +43,11 @@ def pytest_sessionfinish(session, exitstatus) -> None:  # noqa: ARG001
 
 @pytest.fixture(autouse=True)
 def reset_database() -> None:
-    engine = get_engine()
-    Base.metadata.drop_all(bind=engine)
-    Base.metadata.create_all(bind=engine)
+    config = _alembic_config()
+    command.downgrade(config, "base")
+    command.upgrade(config, "head")
     yield
-    Base.metadata.drop_all(bind=engine)
+    command.downgrade(config, "base")
 
 
 @pytest.fixture

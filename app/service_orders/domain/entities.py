@@ -78,6 +78,7 @@ class ServiceOrderEntity:
     labor_total: float
     parts_total: float
     quote_total: float
+    quote_token: str | None
     client_name: str
     client_document_number: str
     client_email: str | None

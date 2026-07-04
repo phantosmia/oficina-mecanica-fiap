@@ -4,7 +4,6 @@ from urllib.parse import urlparse, urlunparse
 from sqlalchemy import Engine, create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
-from app.shared.models import Base
 from app.shared.settings import settings
 
 
@@ -41,10 +40,6 @@ def get_session_factory() -> sessionmaker[Session]:
 
 def get_session() -> Session:
     return get_session_factory()()
-
-
-def init_database() -> None:
-    Base.metadata.create_all(bind=get_engine())
 
 
 def get_db():

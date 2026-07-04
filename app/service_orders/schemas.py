@@ -1,4 +1,5 @@
 from datetime import datetime
+from enum import StrEnum
 
 from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
 
@@ -54,6 +55,16 @@ class ServiceOrderDiagnosisUpdate(BaseModel):
 
 class ServiceOrderQuoteSend(BaseModel):
     diagnosis_notes: str | None = None
+
+
+class ServiceOrderQuoteDecision(StrEnum):
+    APPROVE = "approve"
+    REJECT = "reject"
+
+
+class ServiceOrderQuoteResponse(BaseModel):
+    token: str = Field(min_length=20)
+    decision: ServiceOrderQuoteDecision
 
 
 class ServiceOrderServiceItemRead(BaseModel):

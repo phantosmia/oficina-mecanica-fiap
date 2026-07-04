@@ -35,9 +35,12 @@ print(f"Falha ao conectar no PostgreSQL: {last_error}", file=sys.stderr)
 sys.exit(1)
 PY
 
-# Inicializar o schema do banco
-echo "Inicializando banco de dados..."
-poetry run python -c "from app.shared.database import init_database; init_database()"
+if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
+    echo "Aplicando migrations do banco de dados..."
+    poetry run alembic upgrade head
+else
+    echo "Migrations no startup desabilitadas; esperando que tenham sido aplicadas externamente."
+fi
 
 # Popular o banco com dados de exemplo (idempotente)
 echo "Populando banco com dados de exemplo..."

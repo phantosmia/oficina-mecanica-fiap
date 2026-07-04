@@ -85,6 +85,7 @@ class ServiceOrder(Base, TimestampMixin):
     labor_total: Mapped[float] = mapped_column(Float, nullable=False, default=0, server_default="0")
     parts_total: Mapped[float] = mapped_column(Float, nullable=False, default=0, server_default="0")
     quote_total: Mapped[float] = mapped_column(Float, nullable=False, default=0, server_default="0")
+    quote_token: Mapped[str | None] = mapped_column(String, unique=True, nullable=True, index=True)
     quote_sent_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     approved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
     started_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)

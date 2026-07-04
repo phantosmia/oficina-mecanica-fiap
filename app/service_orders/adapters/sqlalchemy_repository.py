@@ -39,6 +39,7 @@ def _to_entity(orm: ServiceOrderORM, *, include_items: bool = True) -> ServiceOr
         labor_total=orm.labor_total,
         parts_total=orm.parts_total,
         quote_total=orm.quote_total,
+        quote_token=orm.quote_token,
         client_name=orm.client.name,
         client_document_number=orm.client.document_number or "",
         client_email=orm.client.email,
@@ -256,6 +257,7 @@ class SqlAlchemyServiceOrderRepository(IServiceOrderRepository):
                 part.stock_quantity -= item.quantity
                 part.updated_at = now
         order.status = ServiceOrderStatus.IN_PROGRESS.value
+        order.quote_token = None
         order.approved_at = now
         order.started_at = now
         order.updated_at = now

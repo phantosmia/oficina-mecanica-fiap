@@ -4,6 +4,7 @@ metadata:
   name: oficina-mecanica-config
   namespace: oficina-mecanica
 data:
+  PUBLIC_BASE_URL: https://REPLACE_WITH_PUBLIC_API_HOST
   POSTGRES_HOST: REPLACE_WITH_RDS_ENDPOINT
   POSTGRES_PORT: "5432"
   POSTGRES_USER: oficina

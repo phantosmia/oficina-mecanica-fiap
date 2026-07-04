@@ -41,6 +41,25 @@ spec:
         app.kubernetes.io/name: oficina-mecanica-api
         app.kubernetes.io/part-of: oficina-mecanica
     spec:
+      initContainers:
+        - name: wait-for-migrations
+          image: oficina-mecanica-fiap:latest
+          imagePullPolicy: Always
+          command:
+            - poetry
+            - run
+            - python
+            - scripts/wait_for_migrations.py
+          envFrom:
+            - configMapRef:
+                name: oficina-mecanica-config
+            - secretRef:
+                name: oficina-mecanica-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
       containers:
         - name: api
           image: oficina-mecanica-fiap:latest

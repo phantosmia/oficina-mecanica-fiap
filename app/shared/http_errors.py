@@ -3,7 +3,14 @@ from collections.abc import Generator
 
 from fastapi import HTTPException, status
 
-from app.shared.exceptions import ConflictError, DomainError, InsufficientStockError, InvalidTransitionError, NotFoundError
+from app.shared.exceptions import (
+    ConflictError,
+    DomainError,
+    InsufficientStockError,
+    InvalidTransitionError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 
 
 @contextmanager
@@ -13,6 +20,8 @@ def domain_error_handler() -> Generator[None, None, None]:
         yield
     except NotFoundError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
+    except PermissionDeniedError as exc:
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=str(exc)) from exc
     except (ConflictError, InvalidTransitionError, InsufficientStockError) as exc:
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(exc)) from exc
     except DomainError as exc:

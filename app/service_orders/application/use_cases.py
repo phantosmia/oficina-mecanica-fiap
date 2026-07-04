@@ -1,4 +1,5 @@
 from datetime import UTC, datetime
+from secrets import compare_digest, token_urlsafe
 
 from app.shared.email import (
     IEmailNotifier,
@@ -8,7 +9,8 @@ from app.shared.email import (
     quote_available_message,
     quote_rejected_message,
 )
-from app.shared.exceptions import InsufficientStockError, NotFoundError
+from app.shared.exceptions import InsufficientStockError, NotFoundError, PermissionDeniedError
+from app.shared.settings import settings
 from app.shared.validators import detect_document_type
 from app.service_orders.domain.entities import (
     AverageExecutionTimeData,
@@ -151,6 +153,7 @@ class SendQuoteUseCase:
         ensure_transition(ServiceOrderStatus(order.status), ServiceOrderStatus.WAITING_APPROVAL)
         fields: dict[str, object] = {
             "status": ServiceOrderStatus.WAITING_APPROVAL.value,
+            "quote_token": token_urlsafe(32),
             "quote_sent_at": datetime.now(UTC),
             "updated_at": datetime.now(UTC),
         }
@@ -160,7 +163,12 @@ class SendQuoteUseCase:
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
         if result.client_email:
-            subject, body = quote_available_message(order_id, result.quote_total)
+            subject, body = quote_available_message(
+                order_id,
+                result.quote_total,
+                result.quote_token or "",
+                settings.public_base_url,
+            )
             self._notifier.send(to=result.client_email, subject=subject, body=body)
         return result
 
@@ -207,6 +215,7 @@ class RejectOrderUseCase:
             order_id,
             {
                 "status": ServiceOrderStatus.REJECTED.value,
+                "quote_token": None,
                 "updated_at": datetime.now(UTC),
             },
         )
@@ -216,6 +225,24 @@ class RejectOrderUseCase:
             subject, body = quote_rejected_message(order_id)
             self._notifier.send(to=result.client_email, subject=subject, body=body)
         return result
+
+
+class RespondQuoteUseCase:
+    def __init__(self, repo: IServiceOrderRepository, notifier: IEmailNotifier | None = None) -> None:
+        self._repo = repo
+        self._notifier = notifier or NullEmailNotifier()
+
+    def execute(self, order_id: int, token: str, decision: str) -> ServiceOrderEntity:
+        order = self._repo.get_order(order_id)
+        if order is None:
+            raise NotFoundError("Ordem de serviço", order_id)
+        if order.quote_token is None or not compare_digest(order.quote_token, token):
+            raise PermissionDeniedError("Token do orçamento inválido.")
+        if decision == "approve":
+            return ApproveOrderUseCase(self._repo, self._notifier).execute(order_id)
+        if decision == "reject":
+            return RejectOrderUseCase(self._repo, self._notifier).execute(order_id)
+        raise PermissionDeniedError("Decisão de orçamento inválida.")
 
 
 class FinishOrderUseCase:

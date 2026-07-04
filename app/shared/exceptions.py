@@ -15,6 +15,10 @@ class ConflictError(DomainError):
     """Raised when a uniqueness or integrity constraint is violated."""
 
 
+class PermissionDeniedError(DomainError):
+    """Raised when an operation has invalid or insufficient credentials."""
+
+
 class InvalidTransitionError(DomainError):
     """Raised when an invalid status transition is attempted."""
 

@@ -17,13 +17,17 @@ class NullEmailNotifier(IEmailNotifier):
 
 # ── templates de mensagem ─────────────────────────────────────────────────────
 
-def quote_available_message(order_id: int, quote_total: float) -> tuple[str, str]:
+def quote_available_message(order_id: int, quote_total: float, quote_token: str, public_base_url: str) -> tuple[str, str]:
+    response_url = f"{public_base_url.rstrip('/')}/service-orders/{order_id}/quote-response"
     subject = f"[OS #{order_id}] Orçamento disponível para aprovação"
     body = (
         f"Olá!\n\n"
         f"O orçamento da sua Ordem de Serviço #{order_id} está pronto.\n"
         f"Valor total: R$ {quote_total:.2f}\n\n"
-        f"Acesse o sistema para aprovar ou recusar o orçamento.\n\n"
+        f"Para aprovar ou recusar, envie uma requisição POST para:\n"
+        f"{response_url}\n\n"
+        f"Token do orçamento: {quote_token}\n"
+        f"Opções de decisão: approve ou reject.\n\n"
         f"Atenciosamente,\nOficina Mecânica FIAP"
     )
     return subject, body

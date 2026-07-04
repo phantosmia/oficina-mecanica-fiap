@@ -24,6 +24,7 @@ from app.service_orders.application.use_cases import (
     GetTrackingUseCase,
     ListServiceOrdersUseCase,
     RejectOrderUseCase,
+    RespondQuoteUseCase,
     SendQuoteUseCase,
     StartDiagnosisUseCase,
 )
@@ -32,6 +33,7 @@ from app.service_orders.schemas import (
     AverageExecutionTimeRead,
     ServiceOrderCreate,
     ServiceOrderDiagnosisUpdate,
+    ServiceOrderQuoteResponse,
     ServiceOrderQuoteSend,
     ServiceOrderRead,
     ServiceOrderSummary,
@@ -128,6 +130,17 @@ def reject_service_order(
     """Registra a recusa do orçamento pelo cliente e notifica por e-mail."""
     with domain_error_handler():
         return to_read(RejectOrderUseCase(repo, notifier).execute(order_id))
+
+
+@router.post("/{order_id}/quote-response", response_model=ServiceOrderRead)
+def respond_quote(
+    order_id: int,
+    payload: ServiceOrderQuoteResponse,
+    repo: IServiceOrderRepository = Depends(_get_repo),
+    notifier: IEmailNotifier = Depends(_get_notifier),
+) -> ServiceOrderRead:
+    with domain_error_handler():
+        return to_read(RespondQuoteUseCase(repo, notifier).execute(order_id, payload.token, payload.decision.value))
 
 
 @router.post("/{order_id}/finish", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])

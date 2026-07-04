@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Script para popular o banco de dados com dados de exemplo.
+Execute as migrations antes de rodar este script: poetry run alembic upgrade head
 Executar: poetry run python scripts/populate_db.py
 """
 
@@ -12,7 +13,7 @@ from pathlib import Path
 root_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(root_dir))
 
-from app.shared.database import get_session, init_database
+from app.shared.database import get_session
 from app.shared.models import Client, Vehicle, CatalogService, Part, ServiceOrder, ServiceOrderService, ServiceOrderPart
 
 
@@ -64,9 +65,6 @@ def generate_valid_cnpj() -> str:
 
 def populate_database():
     """Popula o banco com dados de exemplo."""
-    # Inicializar banco se necessário
-    init_database()
-
     session = get_session()
 
     try:
