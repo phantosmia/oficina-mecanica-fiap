@@ -54,7 +54,28 @@ module "eks" {
   cluster_version = var.kubernetes_version
 
   cluster_endpoint_public_access           = true
-  enable_cluster_creator_admin_permissions = true
+  enable_cluster_creator_admin_permissions = var.eks_admin_principal_arn == ""
+  create_iam_role                          = var.eks_cluster_role_arn == ""
+  iam_role_arn                             = var.eks_cluster_role_arn == "" ? null : var.eks_cluster_role_arn
+  enable_irsa                              = var.enable_irsa_resources
+
+  access_entries = var.eks_admin_principal_arn == "" ? {} : {
+    lab_admin = {
+      principal_arn = var.eks_admin_principal_arn
+      type          = "STANDARD"
+
+      policy_associations = {
+        admin = {
+          policy_arn = "arn:aws:eks::aws:cluster-access-policy/AmazonEKSClusterAdminPolicy"
+          access_scope = {
+            type = "cluster"
+          }
+        }
+      }
+    }
+  }
+
+  kms_key_administrators = var.eks_admin_principal_arn == "" ? [] : [var.eks_admin_principal_arn]
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
@@ -70,6 +91,8 @@ module "eks" {
       min_size     = var.node_min_size
       max_size     = var.node_max_size
       desired_size = var.node_desired_size
+      create_iam_role = var.eks_node_role_arn == ""
+      iam_role_arn    = var.eks_node_role_arn == "" ? null : var.eks_node_role_arn
     }
   }
 
@@ -232,6 +255,8 @@ resource "aws_secretsmanager_secret_version" "app" {
 }
 
 module "aws_load_balancer_controller_irsa" {
+  count = var.enable_irsa_resources ? 1 : 0
+
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
@@ -249,7 +274,7 @@ module "aws_load_balancer_controller_irsa" {
 }
 
 resource "helm_release" "aws_load_balancer_controller" {
-  count = var.install_aws_load_balancer_controller ? 1 : 0
+  count = var.install_aws_load_balancer_controller && var.enable_irsa_resources ? 1 : 0
 
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
@@ -274,7 +299,7 @@ resource "helm_release" "aws_load_balancer_controller" {
 
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.aws_load_balancer_controller_irsa.iam_role_arn
+    value = module.aws_load_balancer_controller_irsa[0].iam_role_arn
   }
 
   depends_on = [module.eks, module.aws_load_balancer_controller_irsa]
@@ -295,13 +320,15 @@ data "aws_iam_policy_document" "external_secrets" {
 }
 
 module "external_secrets_irsa" {
+  count = var.enable_irsa_resources ? 1 : 0
+
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
   role_name = "${local.cluster_name}-external-secrets"
 
   role_policy_arns = {
-    external_secrets = aws_iam_policy.external_secrets.arn
+    external_secrets = aws_iam_policy.external_secrets[0].arn
   }
 
   oidc_providers = {
@@ -315,13 +342,15 @@ module "external_secrets_irsa" {
 }
 
 module "api_secrets_irsa" {
+  count = var.enable_irsa_resources ? 1 : 0
+
   source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
   version = "~> 5.0"
 
   role_name = "${local.cluster_name}-api-secrets"
 
   role_policy_arns = {
-    external_secrets = aws_iam_policy.external_secrets.arn
+    external_secrets = aws_iam_policy.external_secrets[0].arn
   }
 
   oidc_providers = {
@@ -335,6 +364,8 @@ module "api_secrets_irsa" {
 }
 
 resource "aws_iam_policy" "external_secrets" {
+  count = var.enable_irsa_resources ? 1 : 0
+
   name   = "${local.cluster_name}-external-secrets"
   policy = data.aws_iam_policy_document.external_secrets.json
 
@@ -342,7 +373,7 @@ resource "aws_iam_policy" "external_secrets" {
 }
 
 resource "helm_release" "external_secrets" {
-  count = var.install_external_secrets_operator ? 1 : 0
+  count = var.install_external_secrets_operator && var.enable_irsa_resources ? 1 : 0
 
   name             = "external-secrets"
   repository       = "https://charts.external-secrets.io"
@@ -368,7 +399,7 @@ resource "helm_release" "external_secrets" {
 
   set {
     name  = "serviceAccount.annotations.eks\\.amazonaws\\.com/role-arn"
-    value = module.external_secrets_irsa.iam_role_arn
+    value = module.external_secrets_irsa[0].iam_role_arn
   }
 
   depends_on = [module.eks, module.external_secrets_irsa]
@@ -388,6 +419,8 @@ resource "helm_release" "metrics_server" {
 }
 
 resource "aws_iam_openid_connect_provider" "github_actions" {
+  count = var.enable_github_actions_oidc ? 1 : 0
+
   url = "https://token.actions.githubusercontent.com"
 
   client_id_list = ["sts.amazonaws.com"]
@@ -401,12 +434,14 @@ resource "aws_iam_openid_connect_provider" "github_actions" {
 }
 
 data "aws_iam_policy_document" "github_actions_assume_role" {
+  count = var.enable_github_actions_oidc ? 1 : 0
+
   statement {
     actions = ["sts:AssumeRoleWithWebIdentity"]
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github_actions.arn]
+      identifiers = [aws_iam_openid_connect_provider.github_actions[0].arn]
     }
 
     condition {
@@ -424,8 +459,10 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
 }
 
 resource "aws_iam_role" "github_actions_ecr" {
+  count = var.enable_github_actions_oidc ? 1 : 0
+
   name               = "${local.cluster_name}-github-actions-ecr"
-  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role.json
+  assume_role_policy = data.aws_iam_policy_document.github_actions_assume_role[0].json
 
   tags = local.common_tags
 }
@@ -452,7 +489,9 @@ data "aws_iam_policy_document" "github_actions_ecr" {
 }
 
 resource "aws_iam_role_policy" "github_actions_ecr" {
+  count = var.enable_github_actions_oidc ? 1 : 0
+
   name   = "${local.cluster_name}-github-actions-ecr"
-  role   = aws_iam_role.github_actions_ecr.id
+  role   = aws_iam_role.github_actions_ecr[0].id
   policy = data.aws_iam_policy_document.github_actions_ecr.json
 }

@@ -83,6 +83,7 @@ jobs:
           kubectl kustomize k8s/
           kubectl kustomize k8s/overlays/local
           kubectl kustomize k8s/overlays/aws
+          kubectl kustomize k8s/overlays/aws-academy
 
   terraform:
     name: Validar Terraform AWS

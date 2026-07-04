@@ -3,16 +3,27 @@ name: Deploy AWS/EKS
 on:
   workflow_dispatch:
     inputs:
+      deployment_mode:
+        description: "Modo de deploy"
+        type: choice
+        options:
+          - aws
+          - aws-academy
+        default: aws-academy
       terraform_apply:
         description: "Executar terraform apply antes do deploy?"
         type: boolean
         default: false
+      build_image:
+        description: "Buildar e publicar imagem no ECR antes do deploy?"
+        type: boolean
+        default: true
       image_tag:
         description: "Tag da imagem ECR a implantar"
         type: string
         default: latest
       public_base_url:
-        description: "URL pública da API usada nos e-mails"
+        description: "URL pública da API usada nos e-mails. No aws-academy, vazio usa o LoadBalancer criado."
         type: string
         default: ""
       wait_timeout:
@@ -46,10 +57,20 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Configurar credenciais AWS
+      - name: Configurar credenciais AWS via OIDC
+        if: ${{ inputs.deployment_mode == 'aws' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configurar credenciais AWS Academy
+        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configurar Terraform
@@ -83,9 +104,18 @@ jobs:
       - name: Preparar variáveis sensíveis do Terraform
         working-directory: terraform/aws
         env:
+          DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
           ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
           JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
           SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
+          EKS_ADMIN_PRINCIPAL_ARN: ${{ vars.EKS_ADMIN_PRINCIPAL_ARN }}
+          EKS_CLUSTER_ROLE_ARN: ${{ vars.EKS_CLUSTER_ROLE_ARN }}
+          EKS_NODE_ROLE_ARN: ${{ vars.EKS_NODE_ROLE_ARN }}
+          RDS_ENGINE_VERSION: ${{ vars.RDS_ENGINE_VERSION || '16.14' }}
+          NODE_DESIRED_SIZE: ${{ vars.NODE_DESIRED_SIZE || '1' }}
+          NODE_MIN_SIZE: ${{ vars.NODE_MIN_SIZE || '1' }}
+          NODE_MAX_SIZE: ${{ vars.NODE_MAX_SIZE || '2' }}
+          NODE_DISK_SIZE: ${{ vars.NODE_DISK_SIZE || '20' }}
         run: |
           python - <<'PY'
           import json
@@ -98,6 +128,33 @@ jobs:
               values["jwt_secret_key"] = os.environ["JWT_SECRET_KEY_SECRET"]
           if os.environ.get("SMTP_PASSWORD_SECRET"):
               values["smtp_password"] = os.environ["SMTP_PASSWORD_SECRET"]
+
+          if os.environ["DEPLOYMENT_MODE"] == "aws-academy":
+              required = [
+                  "EKS_ADMIN_PRINCIPAL_ARN",
+                  "EKS_CLUSTER_ROLE_ARN",
+                  "EKS_NODE_ROLE_ARN",
+              ]
+              missing = [name for name in required if not os.environ.get(name)]
+              if missing:
+                  raise SystemExit(f"Configure as GitHub variables obrigatórias para aws-academy: {', '.join(missing)}")
+
+              values.update(
+                  {
+                      "eks_admin_principal_arn": os.environ["EKS_ADMIN_PRINCIPAL_ARN"],
+                      "eks_cluster_role_arn": os.environ["EKS_CLUSTER_ROLE_ARN"],
+                      "eks_node_role_arn": os.environ["EKS_NODE_ROLE_ARN"],
+                      "enable_irsa_resources": False,
+                      "enable_github_actions_oidc": False,
+                      "install_aws_load_balancer_controller": False,
+                      "install_external_secrets_operator": False,
+                      "rds_engine_version": os.environ["RDS_ENGINE_VERSION"],
+                      "node_desired_size": int(os.environ["NODE_DESIRED_SIZE"]),
+                      "node_min_size": int(os.environ["NODE_MIN_SIZE"]),
+                      "node_max_size": int(os.environ["NODE_MAX_SIZE"]),
+                      "node_disk_size": int(os.environ["NODE_DISK_SIZE"]),
+                  }
+              )
 
           with open("terraform.auto.tfvars.json", "w", encoding="utf-8") as file:
               json.dump(values, file)
@@ -120,11 +177,42 @@ jobs:
         id: tf
         working-directory: terraform/aws
         run: |
-          echo "cluster_name=$(terraform output -raw cluster_name)" >> "$GITHUB_OUTPUT"
-          echo "ecr_repository_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
-          echo "rds_endpoint=$(terraform output -raw rds_endpoint)" >> "$GITHUB_OUTPUT"
-          echo "app_secret_name=$(terraform output -raw app_secret_name)" >> "$GITHUB_OUTPUT"
-          echo "api_secrets_role_arn=$(terraform output -raw api_secrets_role_arn)" >> "$GITHUB_OUTPUT"
+          terraform output -json > "${RUNNER_TEMP}/terraform-outputs.json"
+          python - <<'PY'
+          import json
+          import os
+
+          with open(os.environ["RUNNER_TEMP"] + "/terraform-outputs.json", encoding="utf-8") as file:
+            outputs = json.load(file)
+
+          keys = [
+            "cluster_name",
+            "ecr_repository_url",
+            "rds_endpoint",
+            "app_secret_name",
+            "api_secrets_role_arn",
+          ]
+          with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as github_output:
+            for key in keys:
+              value = outputs.get(key, {}).get("value")
+              github_output.write(f"{key}={value or ''}\n")
+          PY
+
+      - name: Login no Amazon ECR
+        if: ${{ inputs.build_image }}
+        run: |
+          ECR_REGISTRY="${{ steps.tf.outputs.ecr_repository_url }}"
+          ECR_REGISTRY="${ECR_REGISTRY%/*}"
+          aws ecr get-login-password --region "${AWS_REGION}" \
+            | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
+
+      - name: Build e push da imagem
+        if: ${{ inputs.build_image }}
+        run: |
+          IMAGE="${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
+          docker build -t oficina-mecanica-fiap:${{ inputs.image_tag }} .
+          docker tag oficina-mecanica-fiap:${{ inputs.image_tag }} "${IMAGE}"
+          docker push "${IMAGE}"
 
       - name: Configurar kubeconfig do EKS
         run: |
@@ -132,7 +220,8 @@ jobs:
             --region "${AWS_REGION}" \
             --name "${{ steps.tf.outputs.cluster_name }}"
 
-      - name: Preparar overlay AWS
+      - name: Preparar overlay AWS completo
+        if: ${{ inputs.deployment_mode == 'aws' }}
         run: |
           PUBLIC_BASE_URL="${{ inputs.public_base_url }}"
           if [ -z "${PUBLIC_BASE_URL}" ]; then
@@ -162,13 +251,49 @@ jobs:
             -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
             k8s/overlays/aws/kustomization.yaml
 
-      - name: Validar overlay AWS
-        run: kubectl kustomize k8s/overlays/aws >/tmp/oficina-mecanica-aws.yaml
+      - name: Preparar overlay AWS Academy
+        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        run: |
+          PUBLIC_BASE_URL="${{ inputs.public_base_url }}"
+          if [ -z "${PUBLIC_BASE_URL}" ]; then
+            PUBLIC_BASE_URL="http://localhost:8000"
+          fi
+
+          sed -i \
+            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
+            -e "s|http://localhost:8000|${PUBLIC_BASE_URL}|g" \
+            k8s/overlays/aws-academy/patch-configmap-rds.yaml
+
+          sed -i \
+            -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
+            -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
+            k8s/overlays/aws-academy/kustomization.yaml
+
+      - name: Criar Secret Kubernetes no AWS Academy
+        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        run: |
+          kubectl apply -f k8s/base/namespace.yaml
+          aws secretsmanager get-secret-value \
+            --secret-id "${{ steps.tf.outputs.app_secret_name }}" \
+            --query SecretString \
+            --output text > "${RUNNER_TEMP}/oficina-app-secret.json"
+
+          kubectl create secret generic oficina-mecanica-secret \
+            -n oficina-mecanica \
+            --from-literal=ADMIN_PASSWORD="$(jq -r .ADMIN_PASSWORD "${RUNNER_TEMP}/oficina-app-secret.json")" \
+            --from-literal=JWT_SECRET_KEY="$(jq -r .JWT_SECRET_KEY "${RUNNER_TEMP}/oficina-app-secret.json")" \
+            --from-literal=POSTGRES_PASSWORD="$(jq -r .POSTGRES_PASSWORD "${RUNNER_TEMP}/oficina-app-secret.json")" \
+            --from-literal=SMTP_PASSWORD="$(jq -r .SMTP_PASSWORD "${RUNNER_TEMP}/oficina-app-secret.json")" \
+            --dry-run=client \
+            -o yaml | kubectl apply -f -
+
+      - name: Validar overlay Kubernetes
+        run: kubectl kustomize "k8s/overlays/${{ inputs.deployment_mode }}" >/tmp/oficina-mecanica-aws.yaml
 
       - name: Aplicar manifests no EKS
         run: |
           kubectl delete job oficina-mecanica-migrations -n oficina-mecanica --ignore-not-found
-          kubectl apply -k k8s/overlays/aws
+          kubectl apply -k "k8s/overlays/${{ inputs.deployment_mode }}"
 
       - name: Aguardar migrations
         run: |
@@ -185,10 +310,38 @@ jobs:
             -n oficina-mecanica \
             --timeout="${{ inputs.wait_timeout }}"
 
+      - name: Ajustar PUBLIC_BASE_URL para LoadBalancer do AWS Academy
+        if: ${{ inputs.deployment_mode == 'aws-academy' && inputs.public_base_url == '' }}
+        run: |
+          for attempt in $(seq 1 60); do
+            API_HOST="$(kubectl get svc oficina-mecanica-api -n oficina-mecanica -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
+            if [ -n "${API_HOST}" ]; then
+              break
+            fi
+            sleep 10
+          done
+
+          if [ -z "${API_HOST}" ]; then
+            echo "LoadBalancer ainda não recebeu hostname externo." >&2
+            exit 1
+          fi
+
+          kubectl patch configmap oficina-mecanica-config \
+            -n oficina-mecanica \
+            --type merge \
+            -p "{\"data\":{\"PUBLIC_BASE_URL\":\"http://${API_HOST}:8000\"}}"
+
+          kubectl rollout restart deployment/oficina-mecanica-api -n oficina-mecanica
+          kubectl rollout status deployment/oficina-mecanica-api -n oficina-mecanica --timeout="${{ inputs.wait_timeout }}"
+
       - name: Resumo do deploy
         run: |
           echo "Cluster: ${{ steps.tf.outputs.cluster_name }}"
           echo "Imagem: ${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
           kubectl get job oficina-mecanica-migrations -n oficina-mecanica
           kubectl get deployment oficina-mecanica-api -n oficina-mecanica
-          kubectl get ingress -n oficina-mecanica
+          kubectl get svc oficina-mecanica-api -n oficina-mecanica
+          kubectl get hpa oficina-mecanica-api -n oficina-mecanica
+          if [ "${{ inputs.deployment_mode }}" = "aws" ]; then
+            kubectl get ingress -n oficina-mecanica
+          fi

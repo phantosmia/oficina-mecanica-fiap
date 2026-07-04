@@ -138,6 +138,7 @@ celerybeat.pid
 # Environments
 .env
 .envrc
+.aws_credentials
 .venv
 env/
 venv/
@@ -212,8 +213,10 @@ cython_debug/
 
 # Terraform
 .terraform/
+.terraform.root-owned.*/
 *.tfstate
 *.tfstate.*
+tfplan*
 crash.log
 override.tf
 override.tf.json

@@ -22,6 +22,36 @@ variable "cluster_name" {
   default     = ""
 }
 
+variable "eks_admin_principal_arn" {
+  description = "ARN IAM que receberá acesso administrativo ao EKS. Útil no AWS Academy, onde iam:GetRole da role voclabs pode ser bloqueado."
+  type        = string
+  default     = ""
+}
+
+variable "eks_cluster_role_arn" {
+  description = "ARN de uma IAM role existente para o control plane do EKS. Use em labs que bloqueiam iam:CreateRole."
+  type        = string
+  default     = ""
+}
+
+variable "eks_node_role_arn" {
+  description = "ARN de uma IAM role existente para o node group do EKS. Use em labs que bloqueiam iam:CreateRole."
+  type        = string
+  default     = ""
+}
+
+variable "enable_irsa_resources" {
+  description = "Cria recursos IAM/OIDC/IRSA para controllers e secrets. Desabilite em AWS Academy Labs com IAM restrito."
+  type        = bool
+  default     = true
+}
+
+variable "enable_github_actions_oidc" {
+  description = "Cria OIDC provider e role para GitHub Actions publicar no ECR. Desabilite em AWS Academy Labs com IAM restrito."
+  type        = bool
+  default     = true
+}
+
 variable "kubernetes_version" {
   description = "Versão do Kubernetes no EKS."
   type        = string

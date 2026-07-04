@@ -194,6 +194,29 @@ Cada item (serviço ou peça) dentro da OS armazena:
 
 ## Como executar localmente
 
+### Opcional: preparar ambiente com mise
+
+O projeto possui um arquivo [.mise.toml](.mise.toml) com versões de ferramentas, variáveis de ambiente locais e tasks comuns.
+
+Para preparar o ambiente:
+
+`mise install`
+
+Para carregar as variáveis no shell atual:
+
+`mise activate zsh`
+
+Ou execute comandos diretamente com `mise run`, por exemplo:
+
+- `mise run db-up`
+- `mise run migrate`
+- `mise run dev`
+- `mise run test`
+- `mise run aws-whoami`
+- `mise run tf-aws-plan`
+
+O [.mise.toml](.mise.toml) define defaults locais não sensíveis e carrega `.env` como override. Credenciais reais, senhas SMTP e valores específicos de Terraform devem ficar no `.env`, em `terraform.tfvars`, em `backend.hcl` ou no arquivo `.aws_credentials`, todos ignorados pelo Git.
+
 ### 1. Subir o banco PostgreSQL
 
 O banco roda como um serviço separado em container. Suba apenas o serviço de banco do Compose:
@@ -641,25 +664,35 @@ O job `build` valida o build da imagem Docker com `docker build` e roda após `t
 
 O workflow [.github/workflows/deploy-aws.yml](.github/workflows/deploy-aws.yml) executa deploy real no EKS via `workflow_dispatch`.
 
-Ele pode ser executado de duas formas:
+Ele pode ser executado em dois modos:
 
-- `terraform_apply=false`: usa o state remoto existente, lê os outputs do Terraform e aplica `kubectl apply -k k8s/overlays/aws`
-- `terraform_apply=true`: roda `terraform plan`, aplica `terraform apply -auto-approve` e depois faz o deploy Kubernetes
+- `deployment_mode=aws`: usa OIDC, IRSA, External Secrets Operator e AWS Load Balancer Controller, aplicando `k8s/overlays/aws`.
+- `deployment_mode=aws-academy`: usa as credenciais temporárias do AWS Academy Lab, reutiliza as roles pré-criadas do lab, desabilita IRSA/OIDC/ALB Controller/External Secrets Operator e aplica `k8s/overlays/aws-academy`.
+
+Em ambos os modos:
+
+- `terraform_apply=false`: usa o state remoto existente, lê os outputs do Terraform e faz o deploy Kubernetes.
+- `terraform_apply=true`: roda `terraform plan`, aplica `terraform apply -auto-approve` e depois faz o deploy Kubernetes.
 
 Inputs do workflow:
 
 | Input | Padrão | Descrição |
 |---|---|---|
+| `deployment_mode` | `aws-academy` | Modo de deploy: `aws` ou `aws-academy` |
 | `terraform_apply` | `false` | Executa `terraform apply` antes do deploy |
-| `image_tag` | `latest` | Tag da imagem já publicada no ECR |
-| `public_base_url` | `""` | URL pública da API usada nos e-mails; se vazio, usa a variable `PUBLIC_BASE_URL` |
+| `build_image` | `true` | Builda e publica a imagem no ECR antes de aplicar o deploy |
+| `image_tag` | `latest` | Tag da imagem no ECR |
+| `public_base_url` | `""` | URL pública da API usada nos e-mails. No modo `aws-academy`, vazio usa o hostname do `Service` `LoadBalancer` criado no deploy |
 | `wait_timeout` | `10m` | Timeout para aguardar Job de migrations e rollout da API |
 
 Configure no GitHub:
 
 | Tipo | Nome | Descrição |
 |---|---|---|
-| Secret | `AWS_DEPLOY_ROLE_TO_ASSUME` | Role OIDC com permissão para Terraform/EKS; se ausente, usa `AWS_ROLE_TO_ASSUME` |
+| Secret | `AWS_DEPLOY_ROLE_TO_ASSUME` | Modo `aws`: role OIDC com permissão para Terraform/EKS; se ausente, usa `AWS_ROLE_TO_ASSUME` |
+| Secret | `AWS_ACCESS_KEY_ID` | Modo `aws-academy`: access key temporária do Lab |
+| Secret | `AWS_SECRET_ACCESS_KEY` | Modo `aws-academy`: secret key temporária do Lab |
+| Secret | `AWS_SESSION_TOKEN` | Modo `aws-academy`: session token temporário do Lab |
 | Secret | `TF_BACKEND_CONFIG` | Conteúdo completo do `backend.hcl`; alternativa às variables de backend |
 | Secret | `ADMIN_PASSWORD` | Valor sensível gravado em `terraform.auto.tfvars.json` durante o workflow |
 | Secret | `JWT_SECRET_KEY` | Valor sensível gravado em `terraform.auto.tfvars.json` durante o workflow |
@@ -670,20 +703,32 @@ Configure no GitHub:
 | Variable | `TF_STATE_REGION` | Região do backend S3, padrão `AWS_REGION` |
 | Variable | `TF_LOCK_TABLE` | Tabela DynamoDB de lock, caso `TF_BACKEND_CONFIG` não seja usado |
 | Variable | `PUBLIC_BASE_URL` | URL pública da API usada quando o input `public_base_url` fica vazio |
+| Variable | `EKS_ADMIN_PRINCIPAL_ARN` | Modo `aws-academy`: principal administrativo do EKS, por exemplo `arn:aws:iam::<account-id>:role/voclabs` |
+| Variable | `EKS_CLUSTER_ROLE_ARN` | Modo `aws-academy`: role pré-criada pelo lab para o control plane do EKS |
+| Variable | `EKS_NODE_ROLE_ARN` | Modo `aws-academy`: role pré-criada pelo lab para o node group do EKS |
+| Variable | `RDS_ENGINE_VERSION` | Modo `aws-academy`: versão disponível no lab/região, padrão `16.14` |
+| Variable | `NODE_DESIRED_SIZE` | Modo `aws-academy`: tamanho desejado do node group, padrão `1` |
+| Variable | `NODE_MIN_SIZE` | Modo `aws-academy`: tamanho mínimo do node group, padrão `1` |
+| Variable | `NODE_MAX_SIZE` | Modo `aws-academy`: tamanho máximo do node group, padrão `2` |
+| Variable | `NODE_DISK_SIZE` | Modo `aws-academy`: disco dos nodes em GiB, padrão `20` |
 
-Se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests.
+No modo `aws`, se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests. No modo `aws-academy`, o workflow aplica inicialmente `http://localhost:8000`, espera o `LoadBalancer` receber hostname externo, atualiza `PUBLIC_BASE_URL` no `ConfigMap` e reinicia o deployment.
 
 O deploy faz, em ordem:
 
-1. autenticação AWS via OIDC;
+1. autenticação AWS via OIDC no modo `aws`, ou via credenciais temporárias no modo `aws-academy`;
 2. `terraform init` com backend remoto;
 3. `terraform plan` e, opcionalmente, `terraform apply`;
 4. leitura dos outputs `cluster_name`, `ecr_repository_url`, `rds_endpoint`, `app_secret_name` e `api_secrets_role_arn`;
-5. `aws eks update-kubeconfig`;
-6. substituição dos placeholders do overlay AWS;
-7. `kubectl delete job oficina-mecanica-migrations --ignore-not-found`;
-8. `kubectl apply -k k8s/overlays/aws`;
-9. espera do Job de migrations e do rollout da API.
+5. build e push da imagem no ECR, quando `build_image=true`;
+6. `aws eks update-kubeconfig`;
+7. substituição dos placeholders do overlay selecionado;
+8. criação da Secret Kubernetes a partir do AWS Secrets Manager no modo `aws-academy`;
+9. `kubectl delete job oficina-mecanica-migrations --ignore-not-found`;
+10. `kubectl apply -k k8s/overlays/<deployment_mode>`;
+11. espera do Job de migrations, rollout da API e, no modo `aws-academy`, ajuste automático do `PUBLIC_BASE_URL` com o hostname do `LoadBalancer`.
+
+O workflow [.github/workflows/publish-ecr.yml](.github/workflows/publish-ecr.yml) também suporta o lab: execute manualmente com `auth_mode=aws-academy` ou defina a variable `AWS_AUTH_MODE=aws-academy` para usar as secrets temporárias do AWS Academy em pushes para `main`.
 
 ## Popular banco com dados de exemplo
 

@@ -85,20 +85,20 @@ output "app_secret_name" {
 
 output "aws_load_balancer_controller_role_arn" {
   description = "Role IRSA para o service account do AWS Load Balancer Controller."
-  value       = module.aws_load_balancer_controller_irsa.iam_role_arn
+  value       = try(module.aws_load_balancer_controller_irsa[0].iam_role_arn, null)
 }
 
 output "github_actions_ecr_role_arn" {
   description = "Role IAM para GitHub Actions publicar a imagem no ECR via OIDC."
-  value       = aws_iam_role.github_actions_ecr.arn
+  value       = try(aws_iam_role.github_actions_ecr[0].arn, null)
 }
 
 output "external_secrets_role_arn" {
   description = "Role IRSA usada pelo External Secrets Operator para ler Secrets Manager."
-  value       = module.external_secrets_irsa.iam_role_arn
+  value       = try(module.external_secrets_irsa[0].iam_role_arn, null)
 }
 
 output "api_secrets_role_arn" {
   description = "Role IRSA usada pelo service account da API para permitir leitura via External Secrets."
-  value       = module.api_secrets_irsa.iam_role_arn
+  value       = try(module.api_secrets_irsa[0].iam_role_arn, null)
 }

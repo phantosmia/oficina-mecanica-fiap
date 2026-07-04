@@ -2,6 +2,14 @@ name: Publish API image to ECR
 
 on:
   workflow_dispatch:
+    inputs:
+      auth_mode:
+        description: "Modo de autenticação AWS"
+        type: choice
+        options:
+          - oidc
+          - aws-academy
+        default: aws-academy
   push:
     branches:
       - main
@@ -20,6 +28,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  AWS_AUTH_MODE: ${{ inputs.auth_mode || vars.AWS_AUTH_MODE || 'oidc' }}
   ECR_REPOSITORY: ${{ vars.ECR_REPOSITORY || 'oficina-mecanica-fiap' }}
 
 jobs:
@@ -31,10 +40,20 @@ jobs:
       - name: Checkout do código
         uses: actions/checkout@v4
 
-      - name: Configurar credenciais AWS
+      - name: Configurar credenciais AWS via OIDC
+        if: ${{ env.AWS_AUTH_MODE == 'oidc' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configurar credenciais AWS Academy
+        if: ${{ env.AWS_AUTH_MODE == 'aws-academy' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Login no Amazon ECR
