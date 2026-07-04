@@ -73,6 +73,16 @@ jobs:
           aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
           aws-region: ${{ env.AWS_REGION }}
 
+      - name: Validar modo de autenticação AWS
+        run: |
+          CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
+          echo "AWS caller: ${CALLER_ARN}"
+
+          if [[ "${CALLER_ARN}" == *":assumed-role/voclabs/"* && "${{ inputs.deployment_mode }}" != "aws-academy" ]]; then
+            echo "Credenciais do AWS Academy Lab detectadas. Execute este workflow com deployment_mode=aws-academy." >&2
+            exit 1
+          fi
+
       - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v3
         with:
@@ -112,6 +122,7 @@ jobs:
           EKS_CLUSTER_ROLE_ARN: ${{ vars.EKS_CLUSTER_ROLE_ARN }}
           EKS_NODE_ROLE_ARN: ${{ vars.EKS_NODE_ROLE_ARN }}
           RDS_ENGINE_VERSION: ${{ vars.RDS_ENGINE_VERSION || '16.14' }}
+          RDS_MAX_ALLOCATED_STORAGE: ${{ vars.RDS_MAX_ALLOCATED_STORAGE || '20' }}
           NODE_DESIRED_SIZE: ${{ vars.NODE_DESIRED_SIZE || '1' }}
           NODE_MIN_SIZE: ${{ vars.NODE_MIN_SIZE || '1' }}
           NODE_MAX_SIZE: ${{ vars.NODE_MAX_SIZE || '2' }}
@@ -149,6 +160,7 @@ jobs:
                       "install_aws_load_balancer_controller": False,
                       "install_external_secrets_operator": False,
                       "rds_engine_version": os.environ["RDS_ENGINE_VERSION"],
+                      "rds_max_allocated_storage": int(os.environ["RDS_MAX_ALLOCATED_STORAGE"]),
                       "node_desired_size": int(os.environ["NODE_DESIRED_SIZE"]),
                       "node_min_size": int(os.environ["NODE_MIN_SIZE"]),
                       "node_max_size": int(os.environ["NODE_MAX_SIZE"]),

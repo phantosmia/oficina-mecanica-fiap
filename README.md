@@ -707,12 +707,13 @@ Configure no GitHub:
 | Variable | `EKS_CLUSTER_ROLE_ARN` | Modo `aws-academy`: role pré-criada pelo lab para o control plane do EKS |
 | Variable | `EKS_NODE_ROLE_ARN` | Modo `aws-academy`: role pré-criada pelo lab para o node group do EKS |
 | Variable | `RDS_ENGINE_VERSION` | Modo `aws-academy`: versão disponível no lab/região, padrão `16.14` |
+| Variable | `RDS_MAX_ALLOCATED_STORAGE` | Modo `aws-academy`: limite de autoscaling do RDS, padrão `20` para evitar drift no lab |
 | Variable | `NODE_DESIRED_SIZE` | Modo `aws-academy`: tamanho desejado do node group, padrão `1` |
 | Variable | `NODE_MIN_SIZE` | Modo `aws-academy`: tamanho mínimo do node group, padrão `1` |
 | Variable | `NODE_MAX_SIZE` | Modo `aws-academy`: tamanho máximo do node group, padrão `2` |
 | Variable | `NODE_DISK_SIZE` | Modo `aws-academy`: disco dos nodes em GiB, padrão `20` |
 
-No modo `aws`, se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests. No modo `aws-academy`, o workflow aplica inicialmente `http://localhost:8000`, espera o `LoadBalancer` receber hostname externo, atualiza `PUBLIC_BASE_URL` no `ConfigMap` e reinicia o deployment.
+No modo `aws`, se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests. No modo `aws-academy`, o workflow aplica inicialmente `http://localhost:8000`, espera o `LoadBalancer` receber hostname externo, atualiza `PUBLIC_BASE_URL` no `ConfigMap` e reinicia o deployment. Se as credenciais carregadas forem da role `voclabs`, o workflow valida que `deployment_mode=aws-academy` foi selecionado antes de executar Terraform.
 
 O deploy faz, em ordem:
 

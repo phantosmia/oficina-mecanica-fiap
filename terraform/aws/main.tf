@@ -11,6 +11,7 @@ locals {
       Project     = var.project_name
       Environment = var.environment
       ManagedBy   = "Terraform"
+      Course      = "FIAP"
     },
     var.tags,
   )
@@ -54,7 +55,7 @@ module "eks" {
   cluster_version = var.kubernetes_version
 
   cluster_endpoint_public_access           = true
-  enable_cluster_creator_admin_permissions = var.eks_admin_principal_arn == ""
+  enable_cluster_creator_admin_permissions = false
   create_iam_role                          = var.eks_cluster_role_arn == ""
   iam_role_arn                             = var.eks_cluster_role_arn == "" ? null : var.eks_cluster_role_arn
   enable_irsa                              = var.enable_irsa_resources
