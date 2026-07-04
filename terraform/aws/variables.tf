@@ -166,6 +166,18 @@ variable "external_secrets_chart_version" {
   default     = "0.10.5"
 }
 
+variable "install_metrics_server" {
+  description = "Instala o metrics-server no EKS via Helm para habilitar HPA por CPU/memória."
+  type        = bool
+  default     = true
+}
+
+variable "metrics_server_chart_version" {
+  description = "Versão do chart Helm do metrics-server."
+  type        = string
+  default     = "3.12.1"
+}
+
 variable "jwt_secret_key" {
   description = "Chave JWT usada pela API no overlay AWS."
   type        = string

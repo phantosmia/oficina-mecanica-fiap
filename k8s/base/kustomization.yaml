@@ -6,3 +6,4 @@ resources:
   - secret.yaml
   - postgres.yaml
   - api.yaml
+  - hpa.yaml

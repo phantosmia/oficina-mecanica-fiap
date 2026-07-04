@@ -265,6 +265,8 @@ A stack continua equivalente ao Compose, com:
 - `Secret` para senha do banco, senha administrativa, chave JWT e senha SMTP
 - `StatefulSet` + `Service` para PostgreSQL 16
 - `Deployment` + `Service` para a API FastAPI
+- 2 réplicas da API nos overlays `local` e `aws`
+- `HorizontalPodAutoscaler` para escalar a API de 2 a 5 pods por CPU/memória
 - probes de startup, readiness e liveness em `/health`
 
 ### 1. Construir a imagem da API
@@ -286,6 +288,24 @@ Os overlays `k8s/overlays/local` e `k8s/overlays/aws` já estão preparados para
 ### 3. Aguardar os pods ficarem prontos
 
 `kubectl get pods -n oficina-mecanica -w`
+
+Para verificar o Deployment, o ReplicaSet gerenciado por ele e as réplicas da API:
+
+`kubectl get deployment oficina-mecanica-api -n oficina-mecanica`
+
+`kubectl get replicaset -n oficina-mecanica`
+
+`kubectl get pods -n oficina-mecanica -l app.kubernetes.io/name=oficina-mecanica-api`
+
+Para verificar o autoscaling horizontal:
+
+`kubectl get hpa oficina-mecanica-api -n oficina-mecanica`
+
+O `ReplicaSet` não é criado manualmente no projeto: ele é criado e controlado automaticamente pelo `Deployment`. Essa é a prática recomendada, porque o `Deployment` gerencia rollout, rollback e substituição gradual dos pods.
+
+O `HorizontalPodAutoscaler` usa as métricas de CPU e memória do cluster para ajustar a quantidade de pods entre 2 e 5 réplicas. Em Minikube, habilite o metrics-server antes de testar o HPA:
+
+`minikube addons enable metrics-server`
 
 O container da API usa o mesmo `docker-entrypoint.sh` do Docker Compose: ele aguarda o PostgreSQL, inicializa o schema e popula os dados de exemplo de forma idempotente.
 
@@ -314,6 +334,7 @@ O projeto agora inclui infraestrutura Terraform em `terraform/aws` para criar:
 - banco PostgreSQL em Amazon RDS
 - IAM/IRSA para o AWS Load Balancer Controller
 - AWS Secrets Manager + External Secrets Operator para informações sensíveis da API
+- metrics-server para o HPA coletar CPU/memória no EKS
 - role OIDC para o GitHub Actions publicar imagens no ECR
 
 Fluxo sugerido:

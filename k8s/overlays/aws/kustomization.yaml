@@ -9,6 +9,7 @@ patches:
   - path: patch-delete-base-secret.yaml
   - path: patch-delete-postgres.yaml
   - path: patch-api-service-account.yaml
+  - path: patch-api-replicas.yaml
   - path: patch-configmap-rds.yaml
 images:
   - name: oficina-mecanica-fiap

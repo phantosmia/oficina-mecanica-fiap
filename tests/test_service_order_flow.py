@@ -115,6 +115,63 @@ def test_full_service_order_flow(client: TestClient, admin_headers: dict[str, st
     assert average_response.json()["finished_orders"] == 1
 
 
+def test_service_order_rejection_flow(client: TestClient, admin_headers: dict[str, str]) -> None:
+    service_response = client.post(
+        "/services",
+        json={
+            "name": "Revisão elétrica",
+            "description": "Diagnóstico do sistema elétrico",
+            "base_price": 180.0,
+            "estimated_minutes": 60,
+            "active": True,
+        },
+        headers=admin_headers,
+    )
+    assert service_response.status_code == 201
+    service_id = service_response.json()["id"]
+
+    order_response = client.post(
+        "/service-orders",
+        json={
+            "client": {
+                "name": "João Pereira",
+                "document_number": "529.982.247-25",
+                "email": "joao@example.com",
+                "phone": "+5511777777777",
+            },
+            "vehicle": {
+                "plate": "GHI1234",
+                "brand": "Honda",
+                "model": "Fit",
+                "year": 2019,
+            },
+            "problem_description": "Pane intermitente",
+            "requested_services": [{"service_id": service_id, "quantity": 1}],
+            "requested_parts": [],
+        },
+        headers=admin_headers,
+    )
+    assert order_response.status_code == 201
+    order_id = order_response.json()["id"]
+
+    quote_response = client.post(
+        f"/service-orders/{order_id}/send-quote",
+        json={"diagnosis_notes": "Orçamento aguardando retorno do cliente."},
+        headers=admin_headers,
+    )
+    assert quote_response.status_code == 200
+    assert quote_response.json()["status"] == "aguardando_aprovacao"
+
+    rejection_response = client.post(f"/service-orders/{order_id}/reject", headers=admin_headers)
+    assert rejection_response.status_code == 200
+    assert rejection_response.json()["status"] == "recusada"
+
+    list_orders_response = client.get("/service-orders", headers=admin_headers)
+    assert list_orders_response.status_code == 200
+    listed_ids = {order["id"] for order in list_orders_response.json()}
+    assert order_id not in listed_ids
+
+
 def test_client_and_vehicle_crud(client: TestClient, admin_headers: dict[str, str]) -> None:
     client_response = client.post(
         "/clients",

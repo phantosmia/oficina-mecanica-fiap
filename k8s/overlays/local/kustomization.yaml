@@ -4,6 +4,7 @@ resources:
   - ../../base
 patches:
   - path: patch-api-service-nodeport.yaml
+  - path: patch-api-replicas.yaml
 images:
   - name: oficina-mecanica-fiap
     newName: phantosmia95/oficina-mecanica-fiap

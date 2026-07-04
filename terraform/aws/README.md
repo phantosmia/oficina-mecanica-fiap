@@ -11,6 +11,7 @@ Infraestrutura AWS para executar a aplicação em Kubernetes com:
 - External Secrets Operator para sincronizar Secrets Manager com Kubernetes Secret
 - IAM Role for Service Accounts (IRSA) para o AWS Load Balancer Controller
 - instalação do AWS Load Balancer Controller via Helm
+- instalação do metrics-server via Helm para habilitar HPA
 - IAM Role OIDC para GitHub Actions publicar imagens no ECR
 
 ## Pré-requisitos
@@ -93,6 +94,10 @@ Configure no GitHub:
 ## AWS Load Balancer Controller
 
 O Terraform cria a IAM role para o service account `kube-system/aws-load-balancer-controller` e instala o controller via Helm por padrão. Para desabilitar essa instalação, defina `install_aws_load_balancer_controller = false` em `terraform.tfvars`.
+
+## Horizontal Pod Autoscaler
+
+O Terraform instala o `metrics-server` via Helm por padrão para permitir que o HPA leia consumo de CPU e memória no EKS. Para desabilitar essa instalação, defina `install_metrics_server = false` em `terraform.tfvars`.
 
 ## Observações
 

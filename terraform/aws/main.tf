@@ -374,6 +374,19 @@ resource "helm_release" "external_secrets" {
   depends_on = [module.eks, module.external_secrets_irsa]
 }
 
+resource "helm_release" "metrics_server" {
+  count = var.install_metrics_server ? 1 : 0
+
+  name             = "metrics-server"
+  repository       = "https://kubernetes-sigs.github.io/metrics-server/"
+  chart            = "metrics-server"
+  version          = var.metrics_server_chart_version
+  namespace        = "kube-system"
+  create_namespace = false
+
+  depends_on = [module.eks]
+}
+
 resource "aws_iam_openid_connect_provider" "github_actions" {
   url = "https://token.actions.githubusercontent.com"
 
