@@ -176,8 +176,34 @@ jobs:
         working-directory: terraform/aws
         run: terraform init -backend-config=backend.hcl
 
+      - name: Ajustar módulo EKS para AWS Academy
+        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        working-directory: terraform/aws
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          module_file = Path(".terraform/modules/eks/main.tf")
+          content = module_file.read_text(encoding="utf-8")
+          block_start = content.index('data "aws_iam_session_context" "current" {')
+          block_end = content.index("\n}", block_start)
+          block = content[block_start:block_end]
+
+          old = "count = local.create ? 1 : 0"
+          new = "count = local.create && var.enable_cluster_creator_admin_permissions ? 1 : 0"
+
+          if new in block:
+              print("Módulo EKS já compatível com AWS Academy.")
+          elif old in block:
+              patched_block = block.replace(old, new, 1)
+              content = content[:block_start] + patched_block + content[block_end:]
+              module_file.write_text(content, encoding="utf-8")
+              print("Módulo EKS ajustado para evitar iam:GetRole em voclabs.")
+          else:
+              raise SystemExit("Não foi possível localizar o count esperado em data.aws_iam_session_context.current.")
+          PY
+
       - name: Terraform plan
-        if: ${{ inputs.terraform_apply }}
         working-directory: terraform/aws
         run: terraform plan -out=tfplan
 
