@@ -88,9 +88,9 @@ module "eks" {
 
   eks_managed_node_groups = {
     default = {
-      min_size     = var.node_min_size
-      max_size     = var.node_max_size
-      desired_size = var.node_desired_size
+      min_size        = var.node_min_size
+      max_size        = var.node_max_size
+      desired_size    = var.node_desired_size
       create_iam_role = var.eks_node_role_arn == ""
       iam_role_arn    = var.eks_node_role_arn == "" ? null : var.eks_node_role_arn
     }
