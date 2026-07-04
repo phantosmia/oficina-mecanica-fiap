@@ -637,6 +637,54 @@ Etapas executadas no job `tests`:
 
 O job `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
 
+### Deploy manual AWS/EKS
+
+O workflow [.github/workflows/deploy-aws.yml](.github/workflows/deploy-aws.yml) executa deploy real no EKS via `workflow_dispatch`.
+
+Ele pode ser executado de duas formas:
+
+- `terraform_apply=false`: usa o state remoto existente, lê os outputs do Terraform e aplica `kubectl apply -k k8s/overlays/aws`
+- `terraform_apply=true`: roda `terraform plan`, aplica `terraform apply -auto-approve` e depois faz o deploy Kubernetes
+
+Inputs do workflow:
+
+| Input | Padrão | Descrição |
+|---|---|---|
+| `terraform_apply` | `false` | Executa `terraform apply` antes do deploy |
+| `image_tag` | `latest` | Tag da imagem já publicada no ECR |
+| `public_base_url` | `""` | URL pública da API usada nos e-mails; se vazio, usa a variable `PUBLIC_BASE_URL` |
+| `wait_timeout` | `10m` | Timeout para aguardar Job de migrations e rollout da API |
+
+Configure no GitHub:
+
+| Tipo | Nome | Descrição |
+|---|---|---|
+| Secret | `AWS_DEPLOY_ROLE_TO_ASSUME` | Role OIDC com permissão para Terraform/EKS; se ausente, usa `AWS_ROLE_TO_ASSUME` |
+| Secret | `TF_BACKEND_CONFIG` | Conteúdo completo do `backend.hcl`; alternativa às variables de backend |
+| Secret | `ADMIN_PASSWORD` | Valor sensível gravado em `terraform.auto.tfvars.json` durante o workflow |
+| Secret | `JWT_SECRET_KEY` | Valor sensível gravado em `terraform.auto.tfvars.json` durante o workflow |
+| Secret | `SMTP_PASSWORD` | Valor sensível gravado em `terraform.auto.tfvars.json` durante o workflow |
+| Variable | `AWS_REGION` | Região AWS do EKS/RDS/ECR |
+| Variable | `TF_STATE_BUCKET` | Bucket S3 do state, caso `TF_BACKEND_CONFIG` não seja usado |
+| Variable | `TF_STATE_KEY` | Chave do state, padrão `aws/dev/terraform.tfstate` |
+| Variable | `TF_STATE_REGION` | Região do backend S3, padrão `AWS_REGION` |
+| Variable | `TF_LOCK_TABLE` | Tabela DynamoDB de lock, caso `TF_BACKEND_CONFIG` não seja usado |
+| Variable | `PUBLIC_BASE_URL` | URL pública da API usada quando o input `public_base_url` fica vazio |
+
+Se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests.
+
+O deploy faz, em ordem:
+
+1. autenticação AWS via OIDC;
+2. `terraform init` com backend remoto;
+3. `terraform plan` e, opcionalmente, `terraform apply`;
+4. leitura dos outputs `cluster_name`, `ecr_repository_url`, `rds_endpoint`, `app_secret_name` e `api_secrets_role_arn`;
+5. `aws eks update-kubeconfig`;
+6. substituição dos placeholders do overlay AWS;
+7. `kubectl delete job oficina-mecanica-migrations --ignore-not-found`;
+8. `kubectl apply -k k8s/overlays/aws`;
+9. espera do Job de migrations e do rollout da API.
+
 ## Popular banco com dados de exemplo
 
 Para testar a aplicação com uma base de dados completa, execute:

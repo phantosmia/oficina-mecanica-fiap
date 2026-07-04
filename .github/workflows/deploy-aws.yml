@@ -1,0 +1,194 @@
+name: Deploy AWS/EKS
+
+on:
+  workflow_dispatch:
+    inputs:
+      terraform_apply:
+        description: "Executar terraform apply antes do deploy?"
+        type: boolean
+        default: false
+      image_tag:
+        description: "Tag da imagem ECR a implantar"
+        type: string
+        default: latest
+      public_base_url:
+        description: "URL pública da API usada nos e-mails"
+        type: string
+        default: ""
+      wait_timeout:
+        description: "Timeout para Job/rollout Kubernetes"
+        type: string
+        default: 10m
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: deploy-aws-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  TF_BACKEND_CONFIG: ${{ secrets.TF_BACKEND_CONFIG }}
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'aws/dev/terraform.tfstate' }}
+  TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+
+jobs:
+  deploy:
+    name: Deploy no EKS
+    runs-on: ubuntu-latest
+    environment: aws
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar credenciais AWS
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configurar kubectl
+        uses: azure/setup-kubectl@v4
+
+      - name: Preparar backend remoto do Terraform
+        working-directory: terraform/aws
+        run: |
+          if [ -n "${TF_BACKEND_CONFIG}" ]; then
+            printf '%s\n' "${TF_BACKEND_CONFIG}" > backend.hcl
+          else
+            if [ -z "${TF_STATE_BUCKET}" ] || [ -z "${TF_LOCK_TABLE}" ]; then
+              echo "Configure o secret TF_BACKEND_CONFIG ou as variables TF_STATE_BUCKET e TF_LOCK_TABLE." >&2
+              exit 1
+            fi
+
+            cat > backend.hcl <<EOF
+          bucket         = "${TF_STATE_BUCKET}"
+          key            = "${TF_STATE_KEY}"
+          region         = "${TF_STATE_REGION}"
+          dynamodb_table = "${TF_LOCK_TABLE}"
+          encrypt        = true
+          EOF
+          fi
+
+      - name: Preparar variáveis sensíveis do Terraform
+        working-directory: terraform/aws
+        env:
+          ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
+          JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
+          SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+
+          values = {}
+          if os.environ.get("ADMIN_PASSWORD_SECRET"):
+              values["admin_password"] = os.environ["ADMIN_PASSWORD_SECRET"]
+          if os.environ.get("JWT_SECRET_KEY_SECRET"):
+              values["jwt_secret_key"] = os.environ["JWT_SECRET_KEY_SECRET"]
+          if os.environ.get("SMTP_PASSWORD_SECRET"):
+              values["smtp_password"] = os.environ["SMTP_PASSWORD_SECRET"]
+
+          with open("terraform.auto.tfvars.json", "w", encoding="utf-8") as file:
+              json.dump(values, file)
+          PY
+
+      - name: Terraform init
+        working-directory: terraform/aws
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform plan
+        working-directory: terraform/aws
+        run: terraform plan -out=tfplan
+
+      - name: Terraform apply manual
+        if: ${{ inputs.terraform_apply }}
+        working-directory: terraform/aws
+        run: terraform apply -auto-approve tfplan
+
+      - name: Ler outputs do Terraform
+        id: tf
+        working-directory: terraform/aws
+        run: |
+          echo "cluster_name=$(terraform output -raw cluster_name)" >> "$GITHUB_OUTPUT"
+          echo "ecr_repository_url=$(terraform output -raw ecr_repository_url)" >> "$GITHUB_OUTPUT"
+          echo "rds_endpoint=$(terraform output -raw rds_endpoint)" >> "$GITHUB_OUTPUT"
+          echo "app_secret_name=$(terraform output -raw app_secret_name)" >> "$GITHUB_OUTPUT"
+          echo "api_secrets_role_arn=$(terraform output -raw api_secrets_role_arn)" >> "$GITHUB_OUTPUT"
+
+      - name: Configurar kubeconfig do EKS
+        run: |
+          aws eks update-kubeconfig \
+            --region "${AWS_REGION}" \
+            --name "${{ steps.tf.outputs.cluster_name }}"
+
+      - name: Preparar overlay AWS
+        run: |
+          PUBLIC_BASE_URL="${{ inputs.public_base_url }}"
+          if [ -z "${PUBLIC_BASE_URL}" ]; then
+            PUBLIC_BASE_URL="${{ vars.PUBLIC_BASE_URL }}"
+          fi
+          if [ -z "${PUBLIC_BASE_URL}" ]; then
+            echo "Configure o input public_base_url ou a variable PUBLIC_BASE_URL." >&2
+            exit 1
+          fi
+
+          sed -i \
+            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
+            -e "s|https://REPLACE_WITH_PUBLIC_API_HOST|${PUBLIC_BASE_URL}|g" \
+            k8s/overlays/aws/patch-configmap-rds.yaml
+
+          sed -i \
+            -e "s|REPLACE_WITH_AWS_REGION|${AWS_REGION}|g" \
+            -e "s|REPLACE_WITH_APP_SECRET_NAME|${{ steps.tf.outputs.app_secret_name }}|g" \
+            k8s/overlays/aws/external-secret.yaml
+
+          sed -i \
+            -e "s|REPLACE_WITH_API_SECRETS_ROLE_ARN|${{ steps.tf.outputs.api_secrets_role_arn }}|g" \
+            k8s/overlays/aws/service-account.yaml
+
+          sed -i \
+            -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
+            -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
+            k8s/overlays/aws/kustomization.yaml
+
+      - name: Validar overlay AWS
+        run: kubectl kustomize k8s/overlays/aws >/tmp/oficina-mecanica-aws.yaml
+
+      - name: Aplicar manifests no EKS
+        run: |
+          kubectl delete job oficina-mecanica-migrations -n oficina-mecanica --ignore-not-found
+          kubectl apply -k k8s/overlays/aws
+
+      - name: Aguardar migrations
+        run: |
+          kubectl wait \
+            --for=condition=complete \
+            --timeout="${{ inputs.wait_timeout }}" \
+            job/oficina-mecanica-migrations \
+            -n oficina-mecanica
+
+      - name: Aguardar rollout da API
+        run: |
+          kubectl rollout status \
+            deployment/oficina-mecanica-api \
+            -n oficina-mecanica \
+            --timeout="${{ inputs.wait_timeout }}"
+
+      - name: Resumo do deploy
+        run: |
+          echo "Cluster: ${{ steps.tf.outputs.cluster_name }}"
+          echo "Imagem: ${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
+          kubectl get job oficina-mecanica-migrations -n oficina-mecanica
+          kubectl get deployment oficina-mecanica-api -n oficina-mecanica
+          kubectl get ingress -n oficina-mecanica

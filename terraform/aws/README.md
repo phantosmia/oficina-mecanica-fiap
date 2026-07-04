@@ -91,6 +91,27 @@ Configure no GitHub:
 - variable `AWS_REGION`: mesma região usada no Terraform
 - variable `ECR_REPOSITORY`: nome do repositório ECR, por padrão `oficina-mecanica-fiap`
 
+## GitHub Actions e deploy no EKS
+
+O workflow `.github/workflows/deploy-aws.yml` executa deploy manual no EKS com `workflow_dispatch`.
+
+Modos de execução:
+
+- `terraform_apply=false`: apenas lê o state remoto, prepara o overlay AWS e roda `kubectl apply -k k8s/overlays/aws`
+- `terraform_apply=true`: executa `terraform apply -auto-approve` antes do deploy Kubernetes
+
+Configure no GitHub:
+
+- secret `AWS_DEPLOY_ROLE_TO_ASSUME`: role OIDC com permissões para Terraform, EKS e leitura do state remoto. Se não existir, o workflow usa `AWS_ROLE_TO_ASSUME`.
+- secret `TF_BACKEND_CONFIG`: conteúdo completo do `backend.hcl`. Alternativamente, configure as variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_STATE_REGION` e `TF_LOCK_TABLE`.
+- secrets `ADMIN_PASSWORD`, `JWT_SECRET_KEY` e `SMTP_PASSWORD`: valores gravados em `terraform.auto.tfvars.json` durante o workflow quando estiverem configurados.
+- variable `AWS_REGION`: região do EKS/RDS/ECR.
+- variable `PUBLIC_BASE_URL`: URL pública da API usada nos e-mails, caso o input `public_base_url` não seja informado.
+
+Se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests.
+
+O workflow substitui automaticamente no overlay AWS os valores de ECR, RDS, Secrets Manager, IRSA e região usando os outputs do Terraform. Antes de aplicar o overlay, ele remove o Job `oficina-mecanica-migrations` para garantir que as migrations da nova imagem sejam executadas novamente.
+
 ## AWS Load Balancer Controller
 
 O Terraform cria a IAM role para o service account `kube-system/aws-load-balancer-controller` e instala o controller via Helm por padrão. Para desabilitar essa instalação, defina `install_aws_load_balancer_controller = false` em `terraform.tfvars`.
