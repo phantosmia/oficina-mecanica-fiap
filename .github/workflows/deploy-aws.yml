@@ -177,6 +177,7 @@ jobs:
         run: terraform init -backend-config=backend.hcl
 
       - name: Terraform plan
+        if: ${{ inputs.terraform_apply }}
         working-directory: terraform/aws
         run: terraform plan -out=tfplan
 

@@ -671,7 +671,7 @@ Ele pode ser executado em dois modos:
 
 Em ambos os modos:
 
-- `terraform_apply=false`: usa o state remoto existente, lê os outputs do Terraform e faz o deploy Kubernetes.
+- `terraform_apply=false`: usa o state remoto existente, lê os outputs do Terraform sem executar `terraform plan` e faz o deploy Kubernetes.
 - `terraform_apply=true`: roda `terraform plan`, aplica `terraform apply -auto-approve` e depois faz o deploy Kubernetes.
 
 Inputs do workflow:

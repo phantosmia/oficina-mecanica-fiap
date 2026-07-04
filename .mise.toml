@@ -1,0 +1,137 @@
+[tools]
+python = "3.12"
+poetry = "latest"
+terraform = "latest"
+kubectl = "latest"
+awscli = "latest"
+
+[env]
+_.file = ".env"
+PYTHONPATH = "{{config_root}}"
+
+# API local
+ADMIN_USERNAME = "admin"
+ADMIN_PASSWORD = "Admin@123"
+JWT_SECRET_KEY = "change-me-in-production"
+JWT_ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = "60"
+PUBLIC_BASE_URL = "http://localhost:8000"
+
+# PostgreSQL local via Docker Compose
+POSTGRES_HOST = "localhost"
+POSTGRES_PORT = "5432"
+POSTGRES_USER = "oficina"
+POSTGRES_PASSWORD = "oficina"
+POSTGRES_DB = "oficina_mecanica"
+
+# SMTP local. Preencha via .env ou shell quando precisar enviar e-mails reais.
+SMTP_ENABLED = "false"
+SMTP_HOST = "localhost"
+SMTP_PORT = "587"
+SMTP_FROM = "noreply@oficina.local"
+SMTP_USERNAME = ""
+SMTP_PASSWORD = ""
+
+# AWS/Terraform local. O arquivo .aws_credentials fica ignorado pelo Git.
+AWS_PROFILE = "default"
+AWS_SHARED_CREDENTIALS_FILE = "{{config_root}}/.aws_credentials"
+AWS_REGION = "us-east-1"
+TF_VAR_aws_region = "us-east-1"
+
+# Backend remoto do Terraform. Ajuste estes valores antes de rodar terraform init em terraform/aws.
+TF_STATE_BUCKET = ""
+TF_STATE_KEY = "aws/dev/terraform.tfstate"
+TF_STATE_REGION = "us-east-1"
+TF_LOCK_TABLE = ""
+
+[tasks.install]
+description = "Instala as dependências Python do projeto"
+run = "poetry install"
+
+[tasks.db-up]
+description = "Sobe apenas o PostgreSQL local"
+run = "docker compose up -d db"
+
+[tasks.db-down]
+description = "Derruba os containers locais"
+run = "docker compose down"
+
+[tasks.db-logs]
+description = "Mostra logs do PostgreSQL local"
+run = "docker compose logs -f db"
+
+[tasks.migrate]
+description = "Aplica migrations Alembic no banco configurado"
+run = "poetry run alembic upgrade head"
+
+[tasks.dev]
+description = "Roda a API local em modo reload"
+run = "poetry run uvicorn app.main:app --reload"
+
+[tasks.populate]
+description = "Popula o banco local com dados de exemplo"
+run = "poetry run python scripts/populate_db.py"
+
+[tasks.test]
+description = "Executa a suíte de testes"
+run = "poetry run pytest"
+
+[tasks.security]
+description = "Gera relatórios de segurança"
+run = "bash scripts/security_scan.sh"
+
+[tasks.compose-up]
+description = "Sobe API e banco via Docker Compose"
+run = "docker compose up --build"
+
+[tasks.compose-down]
+description = "Derruba API e banco via Docker Compose"
+run = "docker compose down"
+
+[tasks.k8s-local-render]
+description = "Renderiza o overlay Kubernetes local"
+run = "kubectl kustomize k8s/overlays/local"
+
+[tasks.k8s-local-apply]
+description = "Aplica o overlay Kubernetes local"
+run = "kubectl apply -k k8s/overlays/local"
+
+[tasks.k8s-local-delete]
+description = "Remove o overlay Kubernetes local"
+run = "kubectl delete -k k8s/overlays/local --ignore-not-found"
+
+[tasks.k8s-aws-render]
+description = "Renderiza o overlay Kubernetes AWS"
+run = "kubectl kustomize k8s/overlays/aws"
+
+[tasks.aws-whoami]
+description = "Valida as credenciais AWS configuradas"
+run = "aws sts get-caller-identity"
+
+[tasks.tf-backend-init]
+description = "Inicializa o Terraform do backend S3/DynamoDB"
+run = "terraform -chdir=terraform/backend init"
+
+[tasks.tf-backend-plan]
+description = "Planeja o backend remoto do Terraform"
+run = "terraform -chdir=terraform/backend plan"
+
+[tasks.tf-backend-apply]
+description = "Aplica o backend remoto do Terraform"
+run = "terraform -chdir=terraform/backend apply"
+
+[tasks.tf-aws-init]
+description = "Inicializa o Terraform AWS usando backend.hcl"
+run = "terraform -chdir=terraform/aws init -backend-config=backend.hcl"
+
+[tasks.tf-aws-plan]
+description = "Planeja a infraestrutura AWS"
+run = "terraform -chdir=terraform/aws plan"
+
+[tasks.tf-aws-apply]
+description = "Aplica a infraestrutura AWS"
+run = "terraform -chdir=terraform/aws apply"
+
+[tasks.tf-aws-output]
+description = "Mostra outputs da infraestrutura AWS"
+run = "terraform -chdir=terraform/aws output"
