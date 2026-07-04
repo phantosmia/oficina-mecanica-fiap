@@ -7,7 +7,8 @@ resources:
   - service-account.yaml
 patches:
   - path: patch-delete-base-secret.yaml
-  - path: patch-delete-postgres.yaml
+  - path: patch-delete-postgres-service.yaml
+  - path: patch-delete-postgres-statefulset.yaml
   - path: patch-api-service-account.yaml
   - path: patch-api-replicas.yaml
   - path: patch-configmap-rds.yaml
