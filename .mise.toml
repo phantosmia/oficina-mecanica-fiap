@@ -76,6 +76,14 @@ run = "poetry run python scripts/populate_db.py"
 description = "Executa a suíte de testes"
 run = "poetry run pytest"
 
+[tasks.load-ui]
+description = "Abre a UI do Locust para teste de carga local"
+run = 'docker run --rm -it -p 8089:8089 --add-host=host.docker.internal:host-gateway -e LOCUST_ADMIN_USERNAME -e LOCUST_ADMIN_PASSWORD -v "${PWD}/k8s/load-test:/mnt/locust:ro" locustio/locust:latest -f /mnt/locust/locustfile.py --host http://host.docker.internal:8000'
+
+[tasks.load-headless]
+description = "Executa teste de carga local com Locust em modo headless"
+run = 'docker run --rm --add-host=host.docker.internal:host-gateway -e LOCUST_ADMIN_USERNAME -e LOCUST_ADMIN_PASSWORD -v "${PWD}/k8s/load-test:/mnt/locust:ro" locustio/locust:latest -f /mnt/locust/locustfile.py --headless --host "${LOCUST_HOST:-http://host.docker.internal:8000}" --users "${LOCUST_USERS:-100}" --spawn-rate "${LOCUST_SPAWN_RATE:-10}" --run-time "${LOCUST_RUN_TIME:-5m}"'
+
 [tasks.security]
 description = "Gera relatórios de segurança"
 run = "bash scripts/security_scan.sh"
@@ -103,6 +111,22 @@ run = "kubectl delete -k k8s/overlays/local --ignore-not-found"
 [tasks.k8s-aws-render]
 description = "Renderiza o overlay Kubernetes AWS"
 run = "kubectl kustomize k8s/overlays/aws"
+
+[tasks.k8s-load-render]
+description = "Renderiza o Job Kubernetes de teste de carga com Locust"
+run = "kubectl kustomize k8s/load-test"
+
+[tasks.k8s-load-run]
+description = "Executa o Job de teste de carga com Locust no cluster"
+run = "kubectl -n oficina-mecanica delete job oficina-mecanica-locust --ignore-not-found && kubectl apply -k k8s/load-test"
+
+[tasks.k8s-load-logs]
+description = "Acompanha os logs do Job de teste de carga com Locust"
+run = "kubectl -n oficina-mecanica logs -f job/oficina-mecanica-locust"
+
+[tasks.k8s-hpa-watch]
+description = "Acompanha o HPA da API durante o teste de carga"
+run = "kubectl -n oficina-mecanica get hpa oficina-mecanica-api -w"
 
 [tasks.aws-whoami]
 description = "Valida as credenciais AWS configuradas"

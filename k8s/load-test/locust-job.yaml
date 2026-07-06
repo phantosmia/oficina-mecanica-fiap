@@ -1,0 +1,66 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: oficina-mecanica-locust
+  labels:
+    app.kubernetes.io/name: oficina-mecanica-locust
+    app.kubernetes.io/part-of: oficina-mecanica
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 300
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oficina-mecanica-locust
+        app.kubernetes.io/part-of: oficina-mecanica
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: locust
+          image: locustio/locust:latest
+          imagePullPolicy: IfNotPresent
+          command:
+            - sh
+            - -c
+          args:
+            - >-
+              locust -f /mnt/locust/locustfile.py --headless
+              --host "${LOCUST_HOST}"
+              --users "${LOCUST_USERS}"
+              --spawn-rate "${LOCUST_SPAWN_RATE}"
+              --run-time "${LOCUST_RUN_TIME}"
+              --only-summary
+          env:
+            - name: LOCUST_HOST
+              value: http://oficina-mecanica-api:8000
+            - name: LOCUST_USERS
+              value: "250"
+            - name: LOCUST_SPAWN_RATE
+              value: "25"
+            - name: LOCUST_RUN_TIME
+              value: 8m
+            - name: LOCUST_ADMIN_USERNAME
+              valueFrom:
+                configMapKeyRef:
+                  name: oficina-mecanica-config
+                  key: ADMIN_USERNAME
+            - name: LOCUST_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: oficina-mecanica-secret
+                  key: ADMIN_PASSWORD
+          volumeMounts:
+            - name: locustfile
+              mountPath: /mnt/locust
+              readOnly: true
+          resources:
+            requests:
+              cpu: 100m
+              memory: 128Mi
+            limits:
+              cpu: 500m
+              memory: 512Mi
+      volumes:
+        - name: locustfile
+          configMap:
+            name: oficina-mecanica-locust

@@ -2,6 +2,27 @@
 
 MVP do back-end do Sistema Integrado de Atendimento e Execução de Serviços de uma oficina mecânica.
 
+## Índice
+
+- [Objetivo do MVP](#objetivo-do-mvp)
+- [Stack adotada](#stack-adotada)
+- [Justificativa do banco de dados](#justificativa-do-banco-de-dados)
+- [Arquitetura](#arquitetura)
+- [Regras principais implementadas](#regras-principais-implementadas)
+- [Cálculo da Ordem de Serviço](#cálculo-da-ordem-de-serviço)
+- [Como executar localmente](#como-executar-localmente)
+- [Como executar com Docker Compose](#como-executar-com-docker-compose)
+- [Como executar com Kubernetes](#como-executar-com-kubernetes)
+- [Autenticação administrativa](#autenticação-administrativa)
+- [Endpoints da API](#endpoints-da-api)
+- [Notificações por e-mail](#notificações-por-e-mail)
+- [Testes automatizados](#testes-automatizados)
+- [Teste de carga com Locust](#teste-de-carga-com-locust)
+- [Pipeline automatizada no GitHub](#pipeline-automatizada-no-github)
+- [Popular banco com dados de exemplo](#popular-banco-com-dados-de-exemplo)
+- [Relatório de vulnerabilidades](#relatório-de-vulnerabilidades)
+- [Observações](#observações)
+
 ## Objetivo do MVP
 
 Esta versão atende os principais requisitos do desafio:
@@ -648,6 +669,36 @@ O fluxo automático é:
 Caso `DATABASE_URL` já esteja definida no ambiente (por exemplo, ao apontar para um banco local existente durante debug), o Testcontainers **não** é acionado e os testes usam a conexão fornecida.
 
 Cobertura mínima configurada: `80%` para os domínios críticos.
+
+## Teste de carga com Locust
+
+O projeto inclui um cenário de carga em [k8s/load-test/locustfile.py](k8s/load-test/locustfile.py). Ele autentica com o usuário admin, consulta endpoints protegidos e mistura chamadas leves (`/health`) com chamadas que acessam o banco (`/db-status`, `/clients`, `/vehicles`, `/service-orders`, `/services` e `/parts`). As execuções locais usam a imagem Docker oficial do Locust, então não é necessário instalar o Locust no ambiente Poetry da API.
+
+Para executar localmente com interface web:
+
+`mise run load-ui`
+
+Depois, acesse `http://localhost:8089`, informe o número de usuários, a taxa de spawn e confirme o host da API.
+
+Para executar localmente em modo headless:
+
+`LOCUST_USERS=100 LOCUST_SPAWN_RATE=10 LOCUST_RUN_TIME=5m mise run load-headless`
+
+Para simular carga dentro do Kubernetes e observar o HPA escalar os pods da API:
+
+`mise run k8s-load-run`
+
+Em outro terminal, acompanhe o HPA:
+
+`mise run k8s-hpa-watch`
+
+E acompanhe o resumo do Locust:
+
+`mise run k8s-load-logs`
+
+O Job Kubernetes fica em [k8s/load-test](k8s/load-test). Por padrão ele roda `250` usuários, spawn rate `25` e duração de `8m`, chamando o Service interno `http://oficina-mecanica-api:8000`. Para uma demonstração mais agressiva, ajuste `LOCUST_USERS`, `LOCUST_SPAWN_RATE` e `LOCUST_RUN_TIME` em [k8s/load-test/locust-job.yaml](k8s/load-test/locust-job.yaml).
+
+Para facilitar gravações de demonstração, o HPA em [k8s/base/hpa.yaml](k8s/base/hpa.yaml) está configurado com `scaleUp.stabilizationWindowSeconds=0` e políticas de scale-up a cada `15s`. Assim, depois que CPU ou memória passarem do alvo, o HPA não aguarda a janela artificial de 1 minuto antes de criar novas réplicas. Ainda pode existir uma pequena latência natural do ciclo do HPA e do `metrics-server`.
 
 ## Pipeline automatizada no GitHub
 
