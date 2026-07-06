@@ -9,7 +9,7 @@ output "lock_table_name" {
 }
 
 output "backend_config" {
-  description = "Configuração sugerida para terraform/aws/backend.hcl."
+  description = "Configuração sugerida para infra/aws/backend.hcl."
   value       = <<EOT
 bucket         = "${aws_s3_bucket.terraform_state.bucket}"
 key            = "aws/dev/terraform.tfstate"

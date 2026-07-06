@@ -367,7 +367,7 @@ Depois, acesse:
 
 ### 5. Aplicar no AWS/EKS
 
-O projeto agora inclui infraestrutura Terraform em `terraform/aws` para criar:
+O projeto agora inclui infraestrutura Terraform em `infra/aws` para criar:
 
 - VPC dedicada
 - cluster EKS
@@ -381,11 +381,11 @@ O projeto agora inclui infraestrutura Terraform em `terraform/aws` para criar:
 
 Fluxo sugerido:
 
-1. criar o backend remoto em `terraform/backend` (S3 para state e DynamoDB para lock)
-2. copiar `terraform/aws/backend.hcl.example` para `terraform/aws/backend.hcl` e ajustar bucket/região/tabela
-3. copiar `terraform/aws/terraform.tfvars.example` para `terraform/aws/terraform.tfvars`
+1. criar o backend remoto em `infra/backend` (S3 para state e DynamoDB para lock)
+2. copiar `infra/aws/backend.hcl.example` para `infra/aws/backend.hcl` e ajustar bucket/região/tabela
+3. copiar `infra/aws/terraform.tfvars.example` para `infra/aws/terraform.tfvars`
 4. ajustar região, nome do cluster e tamanho do node group
-5. executar `terraform init -backend-config=backend.hcl`, `terraform plan` e `terraform apply` em `terraform/aws`
+5. executar `terraform init -backend-config=backend.hcl`, `terraform plan` e `terraform apply` em `infra/aws`
 6. configurar o kubeconfig usando o comando retornado pelo Terraform
 7. autenticar no ECR usando o comando retornado em `terraform output ecr_login_command`
 8. buildar e publicar a imagem no ECR retornado em `terraform output ecr_repository_url`
@@ -400,7 +400,7 @@ Fluxo sugerido:
 
 Exemplo de provisionamento:
 
-`cd terraform/backend`
+`cd infra/backend`
 
 `cp terraform.tfvars.example terraform.tfvars`
 
@@ -671,7 +671,7 @@ Ele pode ser executado em dois modos:
 
 Em ambos os modos:
 
-- `terraform_apply=false`: usa o state remoto existente, lê os outputs do Terraform sem executar `terraform plan` e faz o deploy Kubernetes.
+- `terraform_apply=false`: executa `terraform init` e `terraform plan`, lê os outputs do Terraform e faz o deploy Kubernetes sem aplicar mudanças de infraestrutura.
 - `terraform_apply=true`: roda `terraform plan`, aplica `terraform apply -auto-approve` e depois faz o deploy Kubernetes.
 
 Inputs do workflow:

@@ -22,7 +22,7 @@ Infraestrutura AWS para executar a aplicação em Kubernetes com:
 
 ## Uso
 
-Antes de aplicar esta stack, crie o backend remoto em `terraform/backend` e gere o arquivo `backend.hcl` a partir de `backend.hcl.example`.
+Antes de aplicar esta stack, crie o backend remoto em `infra/backend` e gere o arquivo `backend.hcl` a partir de `backend.hcl.example`.
 
 1. Crie o arquivo de variáveis:
 

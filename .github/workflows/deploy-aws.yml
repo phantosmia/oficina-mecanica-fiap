@@ -92,7 +92,7 @@ jobs:
         uses: azure/setup-kubectl@v4
 
       - name: Preparar backend remoto do Terraform
-        working-directory: terraform/aws
+        working-directory: infra/aws
         run: |
           if [ -n "${TF_BACKEND_CONFIG}" ]; then
             printf '%s\n' "${TF_BACKEND_CONFIG}" > backend.hcl
@@ -112,7 +112,7 @@ jobs:
           fi
 
       - name: Preparar variáveis sensíveis do Terraform
-        working-directory: terraform/aws
+        working-directory: infra/aws
         env:
           DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
           ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
@@ -173,12 +173,12 @@ jobs:
           PY
 
       - name: Terraform init
-        working-directory: terraform/aws
+        working-directory: infra/aws
         run: terraform init -backend-config=backend.hcl
 
       - name: Ajustar módulo EKS para AWS Academy
         if: ${{ inputs.deployment_mode == 'aws-academy' }}
-        working-directory: terraform/aws
+        working-directory: infra/aws
         run: |
           python - <<'PY'
           from pathlib import Path
@@ -204,17 +204,17 @@ jobs:
           PY
 
       - name: Terraform plan
-        working-directory: terraform/aws
+        working-directory: infra/aws
         run: terraform plan -out=tfplan
 
       - name: Terraform apply manual
         if: ${{ inputs.terraform_apply }}
-        working-directory: terraform/aws
+        working-directory: infra/aws
         run: terraform apply -auto-approve tfplan
 
       - name: Ler outputs do Terraform
         id: tf
-        working-directory: terraform/aws
+        working-directory: infra/aws
         run: |
           terraform output -json > "${RUNNER_TEMP}/terraform-outputs.json"
           python - <<'PY'

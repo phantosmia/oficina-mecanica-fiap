@@ -38,7 +38,7 @@ AWS_SHARED_CREDENTIALS_FILE = "{{config_root}}/.aws_credentials"
 AWS_REGION = "us-east-1"
 TF_VAR_aws_region = "us-east-1"
 
-# Backend remoto do Terraform. Ajuste estes valores antes de rodar terraform init em terraform/aws.
+# Backend remoto do Terraform. Ajuste estes valores antes de rodar terraform init em infra/aws.
 TF_STATE_BUCKET = ""
 TF_STATE_KEY = "aws/dev/terraform.tfstate"
 TF_STATE_REGION = "us-east-1"
@@ -110,28 +110,28 @@ run = "aws sts get-caller-identity"
 
 [tasks.tf-backend-init]
 description = "Inicializa o Terraform do backend S3/DynamoDB"
-run = "terraform -chdir=terraform/backend init"
+run = "terraform -chdir=infra/backend init"
 
 [tasks.tf-backend-plan]
 description = "Planeja o backend remoto do Terraform"
-run = "terraform -chdir=terraform/backend plan"
+run = "terraform -chdir=infra/backend plan"
 
 [tasks.tf-backend-apply]
 description = "Aplica o backend remoto do Terraform"
-run = "terraform -chdir=terraform/backend apply"
+run = "terraform -chdir=infra/backend apply"
 
 [tasks.tf-aws-init]
 description = "Inicializa o Terraform AWS usando backend.hcl"
-run = "terraform -chdir=terraform/aws init -backend-config=backend.hcl"
+run = "terraform -chdir=infra/aws init -backend-config=backend.hcl"
 
 [tasks.tf-aws-plan]
 description = "Planeja a infraestrutura AWS"
-run = "terraform -chdir=terraform/aws plan"
+run = "terraform -chdir=infra/aws plan"
 
 [tasks.tf-aws-apply]
 description = "Aplica a infraestrutura AWS"
-run = "terraform -chdir=terraform/aws apply"
+run = "terraform -chdir=infra/aws apply"
 
 [tasks.tf-aws-output]
 description = "Mostra outputs da infraestrutura AWS"
-run = "terraform -chdir=terraform/aws output"
+run = "terraform -chdir=infra/aws output"

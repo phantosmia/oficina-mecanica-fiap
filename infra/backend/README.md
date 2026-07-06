@@ -21,7 +21,7 @@ Este diretório cria os recursos usados pelo backend remoto do Terraform:
 
 `terraform apply`
 
-4. Copie o output `backend_config` para `terraform/aws/backend.hcl`.
+4. Copie o output `backend_config` para `infra/aws/backend.hcl`.
 
 5. Inicialize a stack principal com backend remoto:
 
