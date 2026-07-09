@@ -4,13 +4,30 @@ MVP do back-end do Sistema Integrado de Atendimento e Execução de Serviços de
 
 ## Índice
 
+- [Documentação complementar](#documentação-complementar)
 - [Visão geral](#visão-geral)
 - [Stack](#stack)
 - [Como rodar rápido](#como-rodar-rápido)
 - [Kubernetes e AWS](#kubernetes-e-aws)
 - [Testes e qualidade](#testes-e-qualidade)
-- [Documentação complementar](#documentação-complementar)
 - [Observações](#observações)
+
+## Documentação complementar
+
+Os detalhes foram separados em artigos complementares para manter este README enxuto:
+
+| Artigo | Conteúdo |
+|---|---|
+| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (componentes C4, infraestrutura AWS e fluxo de deploy) |
+| [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS, status, cálculo de orçamento e baixa de estoque |
+| [Execução local](docs/execucao-local.md) | Mise, Poetry, Docker Compose, migrations e dados de exemplo |
+| [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR, RDS e Secrets Manager |
+| [API e autenticação](docs/api.md) | JWT, endpoints públicos, endpoints administrativos e notas de uso |
+| [Notificações por e-mail](docs/email.md) | SMTP, provedores compatíveis e configuração de envio |
+| [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, Locust, HPA e GitHub Actions |
+| [Segurança](docs/seguranca.md) | Bandit, pip-audit, Trivy e relatórios gerados |
+| [Terraform AWS](infra/aws/README.md) | Stack AWS principal |
+| [Terraform backend](infra/backend/README.md) | Backend remoto em S3 com lock em DynamoDB |
 
 ## Visão geral
 
@@ -150,23 +167,6 @@ Mais detalhes:
 
 - Testes, Locust e CI/CD: [docs/testes-carga-ci.md](docs/testes-carga-ci.md)
 - Segurança e relatórios: [docs/seguranca.md](docs/seguranca.md)
-
-## Documentação complementar
-
-Os detalhes foram separados em artigos complementares para manter este README enxuto:
-
-| Artigo | Conteúdo |
-|---|---|
-| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (componentes C4, infraestrutura AWS e fluxo de deploy) |
-| [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS, status, cálculo de orçamento e baixa de estoque |
-| [Execução local](docs/execucao-local.md) | Mise, Poetry, Docker Compose, migrations e dados de exemplo |
-| [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR, RDS e Secrets Manager |
-| [API e autenticação](docs/api.md) | JWT, endpoints públicos, endpoints administrativos e notas de uso |
-| [Notificações por e-mail](docs/email.md) | SMTP, provedores compatíveis e configuração de envio |
-| [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, Locust, HPA e GitHub Actions |
-| [Segurança](docs/seguranca.md) | Bandit, pip-audit, Trivy e relatórios gerados |
-| [Terraform AWS](infra/aws/README.md) | Stack AWS principal |
-| [Terraform backend](infra/backend/README.md) | Backend remoto em S3 com lock em DynamoDB |
 
 ## Observações
 
