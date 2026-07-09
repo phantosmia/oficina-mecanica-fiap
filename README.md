@@ -28,6 +28,7 @@ Esta versão atende os principais requisitos do desafio:
 - migrations Alembic para versionamento do banco
 - testes automatizados com Testcontainers e cobertura mínima
 - Docker Compose, Kubernetes, HPA, Locust, Terraform AWS/EKS e CI/CD
+- diagramas de arquitetura (componentes C4, infraestrutura AWS e fluxo de deploy) em [docs/arquitetura.md](docs/arquitetura.md)
 
 ## Stack
 
@@ -156,7 +157,7 @@ Os detalhes foram separados em artigos complementares para manter este README en
 
 | Artigo | Conteúdo |
 |---|---|
-| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL e princípios aplicados |
+| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (componentes C4, infraestrutura AWS e fluxo de deploy) |
 | [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS, status, cálculo de orçamento e baixa de estoque |
 | [Execução local](docs/execucao-local.md) | Mise, Poetry, Docker Compose, migrations e dados de exemplo |
 | [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR, RDS e Secrets Manager |
