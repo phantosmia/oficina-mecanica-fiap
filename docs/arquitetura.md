@@ -27,7 +27,120 @@ adapters    ->  domain (implements interface)
 - **Adapters** implementam as interfaces do domínio.
 - **Controller** injeta as implementações concretas via `Depends` do FastAPI.
 
-## Estrutura principal
+## Diagrama de componentes
+
+O diagrama abaixo, na notação **C4 (nível de componentes)**, representa os principais componentes da aplicação e suas dependências externas. Os atores (`Usuário Administrador` e `Cliente da Oficina`) aparecem como `Person`, a aplicação é um limite (`boundary`) com seus componentes internos, e os serviços externos (`PostgreSQL` e `SMTP Provider`) ficam fora da aplicação.
+
+![Diagrama de componentes C4 da aplicação Oficina Mecânica](imgs/diagramac4_componentes_oficina_mecanica_fiap.drawio.png)
+
+### Leitura do diagrama
+
+- **Atores**: o `Usuário Administrador` gerencia clientes, veículos, catálogo, peças e ordens; o `Cliente da Oficina` acompanha e aprova ordens pelos endpoints públicos.
+- **Entrada HTTP**: a `FastAPI Application` concentra o roteamento autenticado, o `Auth / Login JWT` cuida da autenticação e emissão de token, e os `Endpoints públicos` expõem ações sem autenticação.
+- **Contextos de domínio**: `System`, `Clients`, `Vehicles`, `Service Catalog`, `Parts` e `Service Orders` representam os componentes funcionais da aplicação. `Service Orders` é o componente central do fluxo de negócio, porque orquestra diagnóstico, orçamento, aprovação, recusa, baixa de estoque e entrega.
+- **Shared**: não é um domínio de negócio; oferece recursos transversais (security/JWT, validators, error mapping, DB session e email port) consumidos pelos demais componentes.
+- **Serviços externos**: o `Banco de Dados da Oficina` (PostgreSQL) é acessado via `shared` (SQLAlchemy) e o `SMTP Provider` recebe os envios de e-mail.
+
+## Diagrama de componentes internos dos contextos
+
+Cada contexto de domínio segue a mesma organização interna. O diagrama abaixo detalha como os componentes internos se relacionam dentro de um contexto, mantendo a regra de dependência da Clean Architecture.
+
+```mermaid
+flowchart LR
+    Controller[Controller / FastAPI Router]
+    Schemas[Schemas / Pydantic]
+    UseCases[Application / Use Cases]
+    Domain[Domain / Entities + Rules]
+    RepoInterface[Domain Repository Interface]
+    Repository[Adapter / SQLAlchemy Repository]
+    Presenter[Adapter / Presenter]
+    Database[(PostgreSQL)]
+
+    Controller --> Schemas
+    Controller --> UseCases
+    UseCases --> Domain
+    UseCases --> RepoInterface
+    Repository --> RepoInterface
+    Repository --> Database
+    Presenter --> Schemas
+    Controller --> Presenter
+```
+
+### Leitura do diagrama interno
+
+- `Controller` recebe a requisição HTTP, valida dependências e chama casos de uso.
+- `Schemas` definem os contratos Pydantic de entrada e saída.
+- `Application / Use Cases` orquestra regras do domínio e depende de interfaces, não de implementações concretas.
+- `Domain` concentra entidades, objetos de valor e regras puras de negócio.
+- `Domain Repository Interface` define o contrato exigido pelo domínio.
+- `Adapter / SQLAlchemy Repository` implementa esse contrato usando persistência em PostgreSQL.
+- `Adapter / Presenter` converte entidades de domínio para schemas de resposta.
+
+## Diagrama da infraestrutura provisionada
+
+O diagrama abaixo representa os principais recursos provisionados pelo Terraform em `infra/aws` e a relação deles com o deploy Kubernetes da API.
+
+![Diagrama da infraestrutura provisionada na AWS](imgs/diagrama_de_infraestrutura_oficina_mecanica_fiap.drawio.png)
+
+### Leitura do diagrama de infraestrutura
+
+- O `Desenvolvedor` e o `GitHub Actions` acionam o fluxo de **Provisionamento e Pipeline**: publicam a imagem no `Amazon ECR` (Docker push) e executam `terraform apply` contra o state remoto (`S3` + `DynamoDB` para lock).
+- `infra/backend` cria o backend remoto do Terraform (S3 para state e DynamoDB para lock); `infra/aws` cria a VPC, subnets, EKS, node group, ECR, RDS, Secrets Manager e os recursos de identidade.
+- Todos os recursos de **Identidade e Acesso** (EKS OIDC + IRSA e GitHub OIDC + ECR Role) residem na conta AWS. O cluster apenas referencia essas roles via ServiceAccount; o GitHub Actions assume a role de ECR via OIDC.
+- O `Usuário Final` acessa a API por HTTPS através do `Load Balancer` nas subnets públicas, que encaminha para o `API Deployment / Service` dentro do `EKS Cluster` (subnets privadas).
+- Dentro do cluster ficam os workloads: `API Deployment / Service`, o `Alembic Migration Job` e os add-ons de plataforma (`HPA + metrics-server`).
+- O `Amazon RDS PostgreSQL` fica na VPC, porém **fora do cluster**, e é acessado pela API e pelo job de migração.
+- O `AWS Secrets Manager` guarda as credenciais sensíveis, sincronizadas para o cluster via IRSA.
+- Observação: no modo **AWS Academy**, a pipeline usa secrets (chaves de sessão) para acessar a conta AWS, e os recursos de OIDC/IRSA ficam desabilitados.
+
+## Diagrama do fluxo de deploy
+
+O diagrama abaixo detalha o fluxo executado pelo workflow `deploy-aws.yml` (GitHub Actions), desde a autenticação na AWS até a validação final do rollout no EKS. Os losangos representam pontos condicionais controlados pelos inputs do workflow (`deployment_mode`, `terraform_apply`, `build_image`).
+
+```mermaid
+flowchart TB
+    Start([workflow_dispatch]) --> Auth{deployment_mode}
+    Auth -->|aws| OIDC[Autentica via GitHub OIDC<br/>assume role AWS]
+    Auth -->|aws-academy| Keys[Autentica via chaves de sessao<br/>AWS Academy]
+
+    OIDC --> Setup{{Setup Terraform + kubectl}}
+    Keys --> Setup
+
+    Setup --> Backend{{Preparar backend remoto<br/>backend.hcl}}
+    Backend --> Tfvars{{Gerar tfvars sensiveis<br/>secrets e variables}}
+    Tfvars --> Init[terraform init]
+    Init --> Plan[terraform plan]
+
+    Plan --> ApplyCheck{terraform_apply?}
+    ApplyCheck -->|true| Apply[terraform apply<br/>-auto-approve]
+    ApplyCheck -->|false| Outputs[Ler outputs do Terraform]
+    Apply --> Outputs
+
+    Outputs --> BuildCheck{build_image?}
+    BuildCheck -->|true| Build[Login ECR +<br/>docker build e push]
+    BuildCheck -->|false| Kube[Configurar kubeconfig do EKS]
+    Build --> Kube
+
+    Kube --> Overlay{{Preparar overlay<br/>Kustomize por modo}}
+    Overlay --> Validate[kubectl kustomize<br/>valida manifests]
+    Validate --> ApplyK8s[kubectl apply -k<br/>recria Migration Job]
+
+    ApplyK8s --> WaitMig@{ shape: delay, label: "Aguardar Migration Job (condition=complete)" }
+    WaitMig --> WaitRollout@{ shape: delay, label: "Aguardar rollout do Deployment da API" }
+    WaitRollout --> Summary[Resumo do deploy]
+    Summary --> End([Deploy concluido])
+```
+
+### Leitura do fluxo de deploy
+
+- **Formas do diagrama**: retângulos são passos de execução; hexágonos são passos de preparação; losangos são decisões condicionais; e as formas em D (delay) representam os passos de **aguardar execução** (Migration Job e rollout).
+- **Autenticação**: no modo `aws` a pipeline assume uma role via GitHub OIDC; no modo `aws-academy` usa chaves de sessão temporárias.
+- **Terraform**: sempre roda `init` e `plan`; o `apply` só ocorre quando o input `terraform_apply=true`. Em seguida os outputs (endpoint do RDS, URL do ECR, ARNs) alimentam os passos seguintes.
+- **Imagem**: quando `build_image=true`, a pipeline faz login no ECR, builda e publica a imagem antes do deploy.
+- **Kubernetes**: configura o `kubeconfig`, prepara o overlay Kustomize do modo escolhido, valida os manifests, recria o `Migration Job` e aplica tudo no EKS.
+- **Sincronização**: aguarda o `Migration Job` completar e o rollout do `Deployment` da API estabilizar antes de emitir o resumo final.
+
+
 
 ```text
 app/
