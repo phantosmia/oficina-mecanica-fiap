@@ -76,7 +76,13 @@ module "eks" {
     }
   }
 
-  kms_key_administrators = var.eks_admin_principal_arn == "" ? [] : [var.eks_admin_principal_arn]
+  # No AWS Academy Lab, a role "voclabs" tem uma deny explícita para iam:GetRole
+  # sobre si mesma, o que faz o KMS rejeitar qualquer key policy que a referencie
+  # como principal (mesmo só como key administrator), com
+  # "MalformedPolicyDocumentException: invalid principals". Como não há
+  # requisito de compliance para cifrar os secrets do EKS com uma KMS key
+  # própria neste laboratório, desabilita essa camada de encryption_config.
+  cluster_encryption_config = {}
 
   vpc_id     = module.vpc.vpc_id
   subnet_ids = module.vpc.private_subnets
