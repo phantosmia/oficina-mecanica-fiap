@@ -260,6 +260,31 @@ jobs:
               raise SystemExit("Não foi possível localizar o count esperado em data.aws_iam_session_context.current.")
           PY
 
+      - name: Ajustar módulo EKS para permitir escalar desired_size via Terraform
+        working-directory: infra/aws
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          module_file = Path(".terraform/modules/eks/modules/eks-managed-node-group/main.tf")
+          content = module_file.read_text(encoding="utf-8")
+
+          # Sem essa remoção, o node group ignora silenciosamente qualquer mudança em
+          # node_desired_size após a criação inicial (não há cluster autoscaler neste projeto
+          # para disputar esse campo com o Terraform).
+          old = "    ignore_changes = [\n      scaling_config[0].desired_size,\n    ]\n"
+          new = ""
+
+          if old not in content:
+              if "ignore_changes" not in content:
+                  print("Módulo EKS já sem o ignore_changes de desired_size.")
+              else:
+                  raise SystemExit("Não foi possível localizar o ignore_changes esperado no node group do módulo EKS.")
+          else:
+              module_file.write_text(content.replace(old, new, 1), encoding="utf-8")
+              print("ignore_changes de scaling_config[0].desired_size removido do módulo EKS.")
+          PY
+
       - name: Terraform plan
         working-directory: infra/aws
         run: terraform plan -out=tfplan
