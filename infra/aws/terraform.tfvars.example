@@ -1,22 +1,17 @@
-aws_region          = "us-east-1"
-environment         = "dev"
-cluster_name        = "oficina-mecanica-dev"
-kubernetes_version  = "1.30"
-node_instance_types = ["t3.medium"]
-node_desired_size   = 3
-node_min_size       = 1
-node_max_size       = 3
-node_disk_size      = 30
-github_repository   = "phantosmia/oficina-mecanica-fiap"
-github_branch       = "main"
-# Copie estes dois valores dos outputs do repositório oficina-mecanica-infra-banco-dados
-# (rds_secret_arn e rds_password, respectivamente) após aplicar aquele Terraform.
-rds_secret_arn      = ""
-postgres_password   = ""
+aws_region  = "us-east-1"
+environment = "dev"
+# Copie do output cluster_name do repositório oficina-mecanica-infra-kubernetes
+# (ou deixe vazio para usar <project_name>-<environment>, igual ao default daquele repositório).
+cluster_name = ""
+# Copie do output oidc_provider_arn do repositório oficina-mecanica-infra-kubernetes
+# após aplicar aquele Terraform.
+eks_oidc_provider_arn = ""
+# Copie do output rds_password do repositório oficina-mecanica-infra-banco-dados.
+postgres_password = ""
 # Troque estes valores em ambientes reais.
-jwt_secret_key      = "change-me-in-production"
-admin_password      = "Admin@123"
-smtp_password       = ""
+jwt_secret_key = "change-me-in-production"
+admin_password = "Admin@123"
+smtp_password  = ""
 
 tags = {
   Owner      = "seu-usuario"

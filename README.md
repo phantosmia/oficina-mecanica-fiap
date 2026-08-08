@@ -38,7 +38,7 @@ A Fase 3 do Tech Challenge exige 4 repositórios separados, cada um com CI/CD e 
 | Repositório | Papel | Status |
 |---|---|---|
 | [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Infraestrutura do Banco de Dados Gerenciado (Terraform, RDS PostgreSQL) | Implementado |
-| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Infraestrutura Kubernetes (Terraform, EKS) | Placeholder |
+| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Infraestrutura Kubernetes (Terraform, VPC, EKS, ECR, add-ons) | Implementado |
 | [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Function Serverless de autenticação via CPF | Placeholder |
 
 ## Visão geral
@@ -71,7 +71,7 @@ Esta versão atende os principais requisitos do desafio:
 - Kubernetes + Kustomize + HPA
 - Locust
 - Terraform
-- AWS EKS, ECR, RDS, Secrets Manager e S3 backend
+- AWS EKS, ECR, RDS, Secrets Manager e S3 backend (EKS/ECR provisionados pelo repositório `oficina-mecanica-infra-kubernetes`; RDS pelo repositório `oficina-mecanica-infra-banco-dados`)
 - GitHub Actions
 
 ## Como rodar rápido
@@ -155,8 +155,10 @@ mise run k8s-load-logs
 Detalhes operacionais:
 
 - Kubernetes e AWS: [docs/kubernetes-aws.md](docs/kubernetes-aws.md)
-- Terraform AWS: [infra/aws/README.md](infra/aws/README.md)
+- Terraform AWS (secret + IRSA da API): [infra/aws/README.md](infra/aws/README.md)
 - Terraform backend S3/DynamoDB: [infra/backend/README.md](infra/backend/README.md)
+- Terraform do cluster EKS/VPC/ECR: [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes)
+- Terraform do RDS: [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados)
 - Teste de carga e HPA: [docs/testes-carga-ci.md](docs/testes-carga-ci.md)
 
 ## Testes e qualidade

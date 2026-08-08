@@ -11,7 +11,7 @@ on:
           - aws-academy
         default: aws-academy
       terraform_apply:
-        description: "Executar terraform apply antes do deploy?"
+        description: "Executar terraform apply (secret + IRSA da API) antes do deploy?"
         type: boolean
         default: false
       build_image:
@@ -41,6 +41,8 @@ concurrency:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  CLUSTER_NAME: ${{ vars.CLUSTER_NAME }}
+  ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
   TF_BACKEND_CONFIG: ${{ secrets.TF_BACKEND_CONFIG }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'aws/dev/terraform.tfstate' }}
@@ -56,6 +58,17 @@ jobs:
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
+
+      - name: Validar variáveis obrigatórias do cluster
+        run: |
+          if [ -z "${CLUSTER_NAME}" ]; then
+            echo "Configure a variable CLUSTER_NAME com o output cluster_name do repositório oficina-mecanica-infra-kubernetes." >&2
+            exit 1
+          fi
+          if [ -z "${ECR_REPOSITORY_URL}" ]; then
+            echo "Configure a variable ECR_REPOSITORY_URL com o output ecr_repository_url do repositório oficina-mecanica-infra-kubernetes." >&2
+            exit 1
+          fi
 
       - name: Configurar credenciais AWS via OIDC
         if: ${{ inputs.deployment_mode == 'aws' }}
@@ -176,14 +189,7 @@ jobs:
           JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
           SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
           POSTGRES_PASSWORD_SECRET: ${{ secrets.POSTGRES_PASSWORD }}
-          RDS_SECRET_ARN: ${{ vars.RDS_SECRET_ARN }}
-          EKS_ADMIN_PRINCIPAL_ARN: ${{ vars.EKS_ADMIN_PRINCIPAL_ARN }}
-          EKS_CLUSTER_ROLE_ARN: ${{ vars.EKS_CLUSTER_ROLE_ARN }}
-          EKS_NODE_ROLE_ARN: ${{ vars.EKS_NODE_ROLE_ARN }}
-          NODE_DESIRED_SIZE: ${{ vars.NODE_DESIRED_SIZE || '1' }}
-          NODE_MIN_SIZE: ${{ vars.NODE_MIN_SIZE || '1' }}
-          NODE_MAX_SIZE: ${{ vars.NODE_MAX_SIZE || '2' }}
-          NODE_DISK_SIZE: ${{ vars.NODE_DISK_SIZE || '20' }}
+          EKS_OIDC_PROVIDER_ARN: ${{ vars.EKS_OIDC_PROVIDER_ARN }}
         run: |
           python - <<'PY'
           import json
@@ -198,34 +204,13 @@ jobs:
               values["smtp_password"] = os.environ["SMTP_PASSWORD_SECRET"]
           if os.environ.get("POSTGRES_PASSWORD_SECRET"):
               values["postgres_password"] = os.environ["POSTGRES_PASSWORD_SECRET"]
-          if os.environ.get("RDS_SECRET_ARN"):
-              values["rds_secret_arn"] = os.environ["RDS_SECRET_ARN"]
+          if os.environ.get("EKS_OIDC_PROVIDER_ARN"):
+              values["eks_oidc_provider_arn"] = os.environ["EKS_OIDC_PROVIDER_ARN"]
 
           if os.environ["DEPLOYMENT_MODE"] == "aws-academy":
-              required = [
-                  "EKS_ADMIN_PRINCIPAL_ARN",
-                  "EKS_CLUSTER_ROLE_ARN",
-                  "EKS_NODE_ROLE_ARN",
-              ]
-              missing = [name for name in required if not os.environ.get(name)]
-              if missing:
-                  raise SystemExit(f"Configure as GitHub variables obrigatórias para aws-academy: {', '.join(missing)}")
-
-              values.update(
-                  {
-                      "eks_admin_principal_arn": os.environ["EKS_ADMIN_PRINCIPAL_ARN"],
-                      "eks_cluster_role_arn": os.environ["EKS_CLUSTER_ROLE_ARN"],
-                      "eks_node_role_arn": os.environ["EKS_NODE_ROLE_ARN"],
-                      "enable_irsa_resources": False,
-                      "enable_github_actions_oidc": False,
-                      "install_aws_load_balancer_controller": False,
-                      "install_external_secrets_operator": False,
-                      "node_desired_size": int(os.environ["NODE_DESIRED_SIZE"]),
-                      "node_min_size": int(os.environ["NODE_MIN_SIZE"]),
-                      "node_max_size": int(os.environ["NODE_MAX_SIZE"]),
-                      "node_disk_size": int(os.environ["NODE_DISK_SIZE"]),
-                  }
-              )
+              # AWS Academy Lab bloqueia iam:CreateRole: a IRSA role do service account
+              # da API não pode ser criada por este Terraform nesse modo.
+              values["enable_irsa_resources"] = False
 
           with open("terraform.auto.tfvars.json", "w", encoding="utf-8") as file:
               json.dump(values, file)
@@ -234,58 +219,6 @@ jobs:
       - name: Terraform init
         working-directory: infra/aws
         run: terraform init -backend-config=backend.hcl
-
-      - name: Ajustar módulo EKS para AWS Academy
-        if: ${{ inputs.deployment_mode == 'aws-academy' }}
-        working-directory: infra/aws
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          module_file = Path(".terraform/modules/eks/main.tf")
-          content = module_file.read_text(encoding="utf-8")
-          block_start = content.index('data "aws_iam_session_context" "current" {')
-          block_end = content.index("\n}", block_start)
-          block = content[block_start:block_end]
-
-          old = "count = local.create ? 1 : 0"
-          new = "count = local.create && var.enable_cluster_creator_admin_permissions ? 1 : 0"
-
-          if new in block:
-              print("Módulo EKS já compatível com AWS Academy.")
-          elif old in block:
-              patched_block = block.replace(old, new, 1)
-              content = content[:block_start] + patched_block + content[block_end:]
-              module_file.write_text(content, encoding="utf-8")
-              print("Módulo EKS ajustado para evitar iam:GetRole em voclabs.")
-          else:
-              raise SystemExit("Não foi possível localizar o count esperado em data.aws_iam_session_context.current.")
-          PY
-
-      - name: Ajustar módulo EKS para permitir escalar desired_size via Terraform
-        working-directory: infra/aws
-        run: |
-          python - <<'PY'
-          from pathlib import Path
-
-          module_file = Path(".terraform/modules/eks/modules/eks-managed-node-group/main.tf")
-          content = module_file.read_text(encoding="utf-8")
-
-          # Sem essa remoção, o node group ignora silenciosamente qualquer mudança em
-          # node_desired_size após a criação inicial (não há cluster autoscaler neste projeto
-          # para disputar esse campo com o Terraform).
-          old = "    ignore_changes = [\n      scaling_config[0].desired_size,\n    ]\n"
-          new = ""
-
-          if old not in content:
-              if "ignore_changes" not in content:
-                  print("Módulo EKS já sem o ignore_changes de desired_size.")
-              else:
-                  raise SystemExit("Não foi possível localizar o ignore_changes esperado no node group do módulo EKS.")
-          else:
-              module_file.write_text(content.replace(old, new, 1), encoding="utf-8")
-              print("ignore_changes de scaling_config[0].desired_size removido do módulo EKS.")
-          PY
 
       - name: Terraform plan
         working-directory: infra/aws
@@ -309,8 +242,6 @@ jobs:
             outputs = json.load(file)
 
           keys = [
-            "cluster_name",
-            "ecr_repository_url",
             "app_secret_name",
             "api_secrets_role_arn",
           ]
@@ -323,15 +254,14 @@ jobs:
       - name: Login no Amazon ECR
         if: ${{ inputs.build_image }}
         run: |
-          ECR_REGISTRY="${{ steps.tf.outputs.ecr_repository_url }}"
-          ECR_REGISTRY="${ECR_REGISTRY%/*}"
+          ECR_REGISTRY="${ECR_REPOSITORY_URL%/*}"
           aws ecr get-login-password --region "${AWS_REGION}" \
             | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
       - name: Build e push da imagem
         if: ${{ inputs.build_image }}
         run: |
-          IMAGE="${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
+          IMAGE="${ECR_REPOSITORY_URL}:${{ inputs.image_tag }}"
           docker build -t oficina-mecanica-fiap:${{ inputs.image_tag }} .
           docker tag oficina-mecanica-fiap:${{ inputs.image_tag }} "${IMAGE}"
           docker push "${IMAGE}"
@@ -340,7 +270,7 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region "${AWS_REGION}" \
-            --name "${{ steps.tf.outputs.cluster_name }}"
+            --name "${CLUSTER_NAME}"
 
       - name: Preparar overlay AWS completo
         if: ${{ inputs.deployment_mode == 'aws' }}
@@ -373,7 +303,7 @@ jobs:
             k8s/overlays/aws/service-account.yaml
 
           sed -i \
-            -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
+            -e "s|newName: .*|newName: ${ECR_REPOSITORY_URL}|g" \
             -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
             k8s/overlays/aws/kustomization.yaml
 
@@ -395,7 +325,7 @@ jobs:
             k8s/overlays/aws-academy/patch-configmap-rds.yaml
 
           sed -i \
-            -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
+            -e "s|newName: .*|newName: ${ECR_REPOSITORY_URL}|g" \
             -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
             k8s/overlays/aws-academy/kustomization.yaml
 
@@ -466,8 +396,8 @@ jobs:
 
       - name: Resumo do deploy
         run: |
-          echo "Cluster: ${{ steps.tf.outputs.cluster_name }}"
-          echo "Imagem: ${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
+          echo "Cluster: ${CLUSTER_NAME}"
+          echo "Imagem: ${ECR_REPOSITORY_URL}:${{ inputs.image_tag }}"
           kubectl get job oficina-mecanica-migrations -n oficina-mecanica
           kubectl get deployment oficina-mecanica-api -n oficina-mecanica
           kubectl get svc oficina-mecanica-api -n oficina-mecanica

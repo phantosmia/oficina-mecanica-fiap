@@ -78,19 +78,22 @@ flowchart LR
 
 ## Diagrama da infraestrutura provisionada
 
-O diagrama abaixo representa os principais recursos provisionados pelo Terraform em `infra/aws` e a relação deles com o deploy Kubernetes da API.
+O diagrama abaixo representa os principais recursos provisionados pelo Terraform e a relação deles com o deploy Kubernetes da API.
+
+> **Nota:** este diagrama foi desenhado antes da separação de repositórios da Fase 3 e ainda mostra VPC/EKS/ECR como parte de `infra/aws` deste repositório. Hoje esses recursos ficam no repositório [`oficina-mecanica-infra-kubernetes`](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) — ver a leitura atualizada abaixo. A imagem será redesenhada em uma etapa futura.
 
 ![Diagrama da infraestrutura provisionada na AWS](imgs/diagrama_de_infraestrutura_oficina_mecanica_fiap.drawio.png)
 
-### Leitura do diagrama de infraestrutura
+### Leitura do diagrama de infraestrutura (atualizada)
 
-- O `Desenvolvedor` e o `GitHub Actions` acionam o fluxo de **Provisionamento e Pipeline**: publicam a imagem no `Amazon ECR` (Docker push) e executam `terraform apply` contra o state remoto (`S3` + `DynamoDB` para lock).
-- `infra/backend` cria o backend remoto do Terraform (S3 para state e DynamoDB para lock); `infra/aws` cria a VPC, subnets, EKS, node group, ECR, RDS, Secrets Manager e os recursos de identidade.
-- Todos os recursos de **Identidade e Acesso** (EKS OIDC + IRSA e GitHub OIDC + ECR Role) residem na conta AWS. O cluster apenas referencia essas roles via ServiceAccount; o GitHub Actions assume a role de ECR via OIDC.
+- O Terraform está dividido em três repositórios: `oficina-mecanica-infra-kubernetes` (VPC, EKS, node group, ECR, IRSA de plataforma, add-ons Helm), `oficina-mecanica-infra-banco-dados` (RDS PostgreSQL, em sua própria VPC) e este repositório, `oficina-mecanica-fiap` (`infra/aws`: secret da API no Secrets Manager + IRSA do seu ServiceAccount).
+- O `Desenvolvedor` e o `GitHub Actions` acionam o fluxo de **Provisionamento e Pipeline** em cada repositório: publicam a imagem no `Amazon ECR` (Docker push, workflow `publish-ecr.yml` deste repositório) e executam `terraform apply` contra o state remoto (`S3` + `DynamoDB` para lock) de cada stack.
+- `infra/backend`, neste repositório, cria o backend remoto do Terraform (S3 para state e DynamoDB para lock) — compartilhado pelos três repositórios, cada um com sua própria `key` de state.
+- Os recursos de **Identidade e Acesso** cluster-wide (EKS OIDC, IRSA do AWS Load Balancer Controller e do External Secrets Operator, GitHub OIDC + ECR Role) residem no repositório `oficina-mecanica-infra-kubernetes`. A IRSA role do ServiceAccount da própria API (`api_secrets_irsa`) fica neste repositório, mas depende do `oidc_provider_arn` exportado por aquele.
 - O `Usuário Final` acessa a API por HTTPS através do `Load Balancer` nas subnets públicas, que encaminha para o `API Deployment / Service` dentro do `EKS Cluster` (subnets privadas).
 - Dentro do cluster ficam os workloads: `API Deployment / Service`, o `Alembic Migration Job` e os add-ons de plataforma (`HPA + metrics-server`).
-- O `Amazon RDS PostgreSQL` fica na VPC, porém **fora do cluster**, e é acessado pela API e pelo job de migração.
-- O `AWS Secrets Manager` guarda as credenciais sensíveis, sincronizadas para o cluster via IRSA.
+- O `Amazon RDS PostgreSQL` fica em sua própria VPC, porém **fora do cluster**, e é acessado pela API e pelo job de migração.
+- O `AWS Secrets Manager` guarda as credenciais sensíveis da API (criadas por este repositório) e do RDS (criadas pelo repositório do banco), sincronizadas para o cluster via IRSA e External Secrets Operator.
 - Observação: no modo **AWS Academy**, a pipeline usa secrets (chaves de sessão) para acessar a conta AWS, e os recursos de OIDC/IRSA ficam desabilitados.
 
 ## Diagrama do fluxo de deploy
@@ -135,7 +138,7 @@ flowchart TB
 
 - **Formas do diagrama**: retângulos são passos de execução; hexágonos são passos de preparação; losangos são decisões condicionais; e as formas em D (delay) representam os passos de **aguardar execução** (Migration Job e rollout).
 - **Autenticação**: no modo `aws` a pipeline assume uma role via GitHub OIDC; no modo `aws-academy` usa chaves de sessão temporárias.
-- **Terraform**: sempre roda `init` e `plan`; o `apply` só ocorre quando o input `terraform_apply=true`. Em seguida os outputs (endpoint do RDS, URL do ECR, ARNs) alimentam os passos seguintes.
+- **Terraform**: sempre roda `init` e `plan` (só o Terraform de `infra/aws`: secret da API + IRSA); o `apply` só ocorre quando o input `terraform_apply=true`. Em seguida os outputs desse Terraform (`app_secret_name`, `api_secrets_role_arn`) e as variables do GitHub (`CLUSTER_NAME`, `ECR_REPOSITORY_URL`, `RDS_ENDPOINT`) alimentam os passos seguintes.
 - **Imagem**: quando `build_image=true`, a pipeline faz login no ECR, builda e publica a imagem antes do deploy.
 - **Kubernetes**: configura o `kubeconfig`, prepara o overlay Kustomize do modo escolhido, valida os manifests, recria o `Migration Job` e aplica tudo no EKS.
 - **Sincronização**: aguarda o `Migration Job` completar e o rollout do `Deployment` da API estabilizar antes de emitir o resumo final.
