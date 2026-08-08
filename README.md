@@ -26,6 +26,8 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | [Notificações por e-mail](docs/email.md) | SMTP, provedores compatíveis e configuração de envio |
 | [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, Locust, HPA e GitHub Actions |
 | [Segurança](docs/seguranca.md) | Bandit, pip-audit, Trivy e relatórios gerados |
+| [RFCs](docs/rfcs/README.md) | Decisões técnicas relevantes: escolha da nuvem, do banco e da estratégia de autenticação |
+| [ADRs](docs/adrs/README.md) | Decisões arquiteturais permanentes: padrão de comunicação, HPA e banco gerenciado |
 | [Terraform AWS](infra/aws/README.md) | Stack AWS principal |
 | [Terraform backend](infra/backend/README.md) | Backend remoto em S3 com lock em DynamoDB |
 
