@@ -127,35 +127,35 @@ O diagrama abaixo detalha o fluxo executado pelo workflow `deploy-aws.yml` (GitH
 ```mermaid
 flowchart TB
     Start([workflow_dispatch]) --> Auth{deployment_mode}
-    Auth -->|aws| OIDC["Autentica via GitHub OIDC<br/>assume role AWS"]
-    Auth -->|aws-academy| Keys["Autentica via chaves<br/>de sessão AWS Academy"]
+    Auth -->|aws| OIDC["Autentica via GitHub OIDC<br/> assume role AWS"]
+    Auth -->|aws-academy| Keys["Autentica via chaves<br/> de sessão AWS Academy"]
 
     OIDC --> Setup{{"Setup Terraform<br/>+ kubectl"}}
     Keys --> Setup
 
-    Setup --> Backend{{"Preparar backend<br/>remoto (backend.hcl)"}}
-    Backend --> Tfvars{{"Gerar tfvars<br/>sensíveis"}}
+    Setup --> Backend{{"Preparar backend<br/> remoto (backend.hcl)"}}
+    Backend --> Tfvars{{"Gerar tfvars<br/> sensíveis"}}
     Tfvars --> Init["terraform init"]
-    Init --> Plan["terraform plan<br/>(lê kubernetes + database<br/>via terraform_remote_state)"]
+    Init --> Plan["terraform plan<br/> (lê kubernetes + database<br/> via terraform_remote_state)"]
 
-    Plan --> RemoteStateCheck{"State remoto dos outros<br/>repos existe no ambiente?"}
-    RemoteStateCheck -->|não| Fail(["Falha imediata:<br/>remote state ausente"])
+    Plan --> RemoteStateCheck{"State remoto dos outros<br/> repos existe no ambiente?"}
+    RemoteStateCheck -->|não| Fail(["Falha imediata:<br/> remote state ausente"])
     RemoteStateCheck -->|sim| ApplyCheck{"terraform_apply?"}
-    ApplyCheck -->|true| Apply["terraform apply<br/>-auto-approve"]
-    ApplyCheck -->|false| Outputs["Ler outputs<br/>do Terraform"]
+    ApplyCheck -->|true| Apply["terraform apply<br/> -auto-approve"]
+    ApplyCheck -->|false| Outputs["Ler outputs<br/> do Terraform"]
     Apply --> Outputs
 
     Outputs --> BuildCheck{"build_image?"}
-    BuildCheck -->|true| Build["Login ECR +<br/>docker build/push"]
-    BuildCheck -->|false| Kube["Configurar kubeconfig<br/>do EKS"]
+    BuildCheck -->|true| Build["Login ECR +<br/> docker build/push"]
+    BuildCheck -->|false| Kube["Configurar kubeconfig<br/> do EKS"]
     Build --> Kube
 
-    Kube --> Overlay{{"Preparar overlay<br/>Kustomize por modo"}}
-    Overlay --> Validate["kubectl kustomize<br/>(valida manifests)"]
-    Validate --> ApplyK8s["kubectl apply -k<br/>(recria Migration Job)"]
+    Kube --> Overlay{{"Preparar overlay<br/> Kustomize por modo"}}
+    Overlay --> Validate["kubectl kustomize<br/> (valida manifests)"]
+    Validate --> ApplyK8s["kubectl apply -k<br/> (recria Migration Job)"]
 
-    ApplyK8s --> WaitMig[["Aguardar Migration Job<br/>(condition=complete)"]]
-    WaitMig --> WaitRollout[["Aguardar rollout do<br/>Deployment da API"]]
+    ApplyK8s --> WaitMig[["Aguardar Migration Job<br/> (condition=complete)"]]
+    WaitMig --> WaitRollout[["Aguardar rollout do<br/> Deployment da API"]]
     WaitRollout --> Summary["Resumo do deploy"]
     Summary --> End([Deploy concluído])
 ```
