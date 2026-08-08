@@ -96,6 +96,30 @@ O diagrama abaixo representa os principais recursos provisionados pelo Terraform
 - O `AWS Secrets Manager` guarda as credenciais sensíveis da API (criadas por este repositório) e do RDS (criadas pelo repositório do banco), sincronizadas para o cluster via IRSA e External Secrets Operator.
 - Observação: no modo **AWS Academy**, a pipeline usa secrets (chaves de sessão) para acessar a conta AWS, e os recursos de OIDC/IRSA ficam desabilitados.
 
+## Diagrama de dependência entre os repositórios Terraform
+
+A leitura via `terraform_remote_state` (ver seção anterior) cria uma **ordem de apply obrigatória** entre os três repositórios: cada seta abaixo é uma leitura de state, não uma chamada de API — se o state do lado de origem da seta ainda não existir no ambiente (`dev`, `homologacao` ou `producao`) sendo lido, o `plan`/`apply` do lado de destino falha.
+
+```mermaid
+flowchart LR
+    DB["oficina-mecanica-infra-banco-dados<br/><small>database/&lt;env&gt;/terraform.tfstate</small>"]
+    K8S["oficina-mecanica-infra-kubernetes<br/><small>kubernetes/&lt;env&gt;/terraform.tfstate</small>"]
+    APP["oficina-mecanica-fiap: infra/aws<br/><small>aws/&lt;env&gt;/terraform.tfstate</small>"]
+
+    DB -- "rds_secret_arn" --> K8S
+    DB -- "rds_endpoint, rds_password" --> APP
+    K8S -- "cluster_name, ecr_repository_url,<br/>oidc_provider_arn" --> APP
+```
+
+Ordem de apply, portanto: **banco de dados → cluster Kubernetes → aplicação principal**. Isso vale tanto para uma aplicação manual local quanto para os workflows de CI/CD de cada repositório — nenhum deles provisiona os outros automaticamente, então rodar o `terraform apply` do repositório errado primeiro (ou apontar `kubernetes_state_key`/`database_state_key`/`infra_environment` para um ambiente que nunca foi aplicado) leva a essa falha.
+
+> **O que acontece se você rodar fora de ordem:** o `terraform plan` (ou `apply`) do repositório que lê o state ausente falha imediatamente, com:
+> ```
+> Error: Unable to find remote state
+> No stored state was found for the given workspace in the given backend.
+> ```
+> Não há execução parcial nem valores vazios silenciosos — o Terraform recusa a rodar o `plan` sem conseguir resolver a leitura. A correção é sempre a mesma: aplique primeiro o repositório de origem da seta, no mesmo ambiente (`dev`/`homologacao`/`producao`) que o repositório dependente está tentando ler.
+
 ## Diagrama do fluxo de deploy
 
 O diagrama abaixo detalha o fluxo executado pelo workflow `deploy-aws.yml` (GitHub Actions), desde a autenticação na AWS até a validação final do rollout no EKS. Os losangos representam pontos condicionais controlados pelos inputs do workflow (`deployment_mode`, `terraform_apply`, `build_image`).
@@ -112,9 +136,11 @@ flowchart TB
     Setup --> Backend{{Preparar backend remoto<br/>backend.hcl}}
     Backend --> Tfvars{{Gerar tfvars sensiveis<br/>secrets e variables}}
     Tfvars --> Init[terraform init]
-    Init --> Plan[terraform plan]
+    Init --> Plan[terraform plan<br/>le kubernetes + database via<br/>terraform_remote_state]
 
-    Plan --> ApplyCheck{terraform_apply?}
+    Plan --> RemoteStateCheck{state remoto dos outros<br/>dois repositorios existe<br/>no ambiente lido?}
+    RemoteStateCheck -->|nao| Fail(["Falha imediata:<br/>Unable to find remote state<br/>aplique kubernetes/database primeiro"])
+    RemoteStateCheck -->|sim| ApplyCheck{terraform_apply?}
     ApplyCheck -->|true| Apply[terraform apply<br/>-auto-approve]
     ApplyCheck -->|false| Outputs[Ler outputs do Terraform]
     Apply --> Outputs
@@ -139,6 +165,7 @@ flowchart TB
 - **Formas do diagrama**: retângulos são passos de execução; hexágonos são passos de preparação; losangos são decisões condicionais; e as formas em D (delay) representam os passos de **aguardar execução** (Migration Job e rollout).
 - **Autenticação**: no modo `aws` a pipeline assume uma role via GitHub OIDC; no modo `aws-academy` usa chaves de sessão temporárias.
 - **Terraform**: sempre roda `init` e `plan` (só o Terraform de `infra/aws`: secret da API + IRSA); o `apply` só ocorre quando o input `terraform_apply=true`. Já durante o `plan`, o Terraform lê automaticamente `cluster_name`, `ecr_repository_url`, `oidc_provider_arn`, `rds_endpoint` e `rds_password` via `terraform_remote_state` dos outros dois repositórios; os outputs resultantes (`app_secret_name`, `api_secrets_role_arn`, `cluster_name`, `ecr_repository_url`, `rds_endpoint`) alimentam os passos seguintes — não há mais variables do GitHub para esses valores.
+- **Dependência entre repositórios**: se o `oficina-mecanica-infra-kubernetes` e o `oficina-mecanica-infra-banco-dados` ainda não tiverem sido aplicados no ambiente apontado pelo input `infra_environment` (default `dev`), o `terraform plan` deste passo falha imediatamente (`Unable to find remote state`) — ver o [diagrama de dependência entre os repositórios](#diagrama-de-dependência-entre-os-repositórios-terraform) acima. Rodar este workflow antes deles é o erro mais comum de "executei fora de ordem".
 - **Imagem**: quando `build_image=true`, a pipeline faz login no ECR, builda e publica a imagem antes do deploy.
 - **Kubernetes**: configura o `kubeconfig`, prepara o overlay Kustomize do modo escolhido, valida os manifests, recria o `Migration Job` e aplica tudo no EKS.
 - **Sincronização**: aguarda o `Migration Job` completar e o rollout do `Deployment` da API estabilizar antes de emitir o resumo final.

@@ -224,7 +224,20 @@ jobs:
 
       - name: Terraform plan
         working-directory: infra/aws
-        run: terraform plan -out=tfplan
+        env:
+          INFRA_ENVIRONMENT: ${{ inputs.infra_environment }}
+        run: |
+          # Este plan lê cluster/ECR/OIDC do repositório oficina-mecanica-infra-kubernetes
+          # e endpoint/senha do RDS do oficina-mecanica-infra-banco-dados via
+          # terraform_remote_state. Se algum dos dois nunca foi aplicado no ambiente
+          # "${INFRA_ENVIRONMENT}", o plan falha com "Unable to find remote state" —
+          # capturamos aqui para deixar a causa raiz e a correção explícitas no log.
+          if ! terraform plan -out=tfplan 2>&1 | tee /tmp/tf-plan.log; then
+            if grep -q "Unable to find remote state" /tmp/tf-plan.log; then
+              echo "::error::terraform plan falhou ao ler o state remoto de outro repositório. Aplique primeiro, no ambiente '${INFRA_ENVIRONMENT}': (1) oficina-mecanica-infra-banco-dados e (2) oficina-mecanica-infra-kubernetes — nessa ordem — antes de rodar este workflow. Veja docs/arquitetura.md#diagrama-de-dependência-entre-os-repositórios-terraform."
+            fi
+            exit 1
+          fi
 
       - name: Terraform apply manual
         if: ${{ inputs.terraform_apply }}

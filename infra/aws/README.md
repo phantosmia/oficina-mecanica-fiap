@@ -32,7 +32,14 @@ Este Terraform usa isso para obter automaticamente:
 | `rds_password` | `oficina-mecanica-infra-banco-dados` | conteúdo do secret da API (`POSTGRES_PASSWORD`) |
 | `rds_endpoint` | `oficina-mecanica-infra-banco-dados` | repassado como output, usado pelo workflow de deploy |
 
-Isso implica uma **ordem de apply**: `oficina-mecanica-infra-banco-dados` → `oficina-mecanica-infra-kubernetes` → este repositório. Se a `key` esperada ainda não existir no bucket (porque o outro repositório nunca foi aplicado naquele ambiente), o `terraform plan`/`apply` falha com um erro de leitura do backend S3 — não silenciosamente.
+Isso implica uma **ordem de apply**: `oficina-mecanica-infra-banco-dados` → `oficina-mecanica-infra-kubernetes` → este repositório. Se a `key` esperada ainda não existir no bucket (porque o outro repositório nunca foi aplicado naquele ambiente), o `terraform plan`/`apply` falha **imediatamente**, não silenciosamente:
+
+```
+Error: Unable to find remote state
+No stored state was found for the given workspace in the given backend.
+```
+
+A correção é sempre aplicar primeiro o repositório de origem da leitura que falhou, no mesmo ambiente (`dev`/`homologacao`/`producao`) que este repositório está tentando ler (`kubernetes_state_key`/`database_state_key`, ou o input `infra_environment` do workflow `deploy-aws.yml`). Ver o [diagrama de dependência entre os repositórios](../../docs/arquitetura.md#diagrama-de-dependência-entre-os-repositórios-terraform) para a visão completa. O workflow `deploy-aws.yml` já detecta esse erro específico e imprime qual repositório aplicar primeiro.
 
 As variáveis `kubernetes_state_key` e `database_state_key` controlam qual ambiente de cada repositório é lido (default `dev` nos dois); ajuste-as (ou o input `infra_environment` do workflow `deploy-aws.yml`) para consumir `homologacao`/`producao` quando necessário.
 

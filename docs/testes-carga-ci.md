@@ -137,4 +137,6 @@ O deploy faz, em ordem:
 
 O cluster, o node group e o repositório ECR são provisionados e mantidos pelo workflow [`.github/workflows/terraform.yml`](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes/blob/main/.github/workflows/terraform.yml) do repositório `oficina-mecanica-infra-kubernetes`, não por este.
 
+**Ordem de apply obrigatória:** como o passo 3 lê o state de `oficina-mecanica-infra-kubernetes` e `oficina-mecanica-infra-banco-dados` via `terraform_remote_state`, rodar este workflow com `infra_environment` apontando para um ambiente em que aqueles dois repositórios nunca foram aplicados falha imediatamente no `terraform plan` (`Unable to find remote state`). O workflow já detecta esse erro e aponta qual repositório aplicar primeiro — ver o [diagrama de dependência em arquitetura.md](arquitetura.md#diagrama-de-dependência-entre-os-repositórios-terraform).
+
 O workflow [.github/workflows/publish-ecr.yml](../.github/workflows/publish-ecr.yml) também suporta o lab e usa o environment `aws`.
