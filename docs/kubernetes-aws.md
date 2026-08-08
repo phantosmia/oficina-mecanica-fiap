@@ -103,7 +103,9 @@ O backend remoto do Terraform fica em `infra/backend` e cria S3 para state e Dyn
 
 ## Fluxo Terraform sugerido
 
-Os três repositórios Terraform compartilham o mesmo backend S3 e se conectam via `terraform_remote_state` (ver [infra/aws/README.md](../infra/aws/README.md)), então a única coisa que importa é a **ordem de apply**: banco → cluster → aplicação. Nenhum output precisa ser copiado manualmente entre eles.
+Os três repositórios Terraform compartilham o mesmo backend S3 e se conectam via `terraform_remote_state` (ver [infra/aws/README.md](../infra/aws/README.md) e o [diagrama de dependência em arquitetura.md](arquitetura.md#diagrama-de-dependência-entre-os-repositórios-terraform)), então a única coisa que importa é a **ordem de apply**: banco → cluster → aplicação. Nenhum output precisa ser copiado manualmente entre eles.
+
+> **Atenção à ordem:** rodar `terraform plan`/`apply` de um repositório antes do outro já ter sido aplicado no mesmo ambiente (`dev`, `homologacao` ou `producao`) falha imediatamente com `Error: Unable to find remote state`. Isso vale tanto localmente quanto nos workflows de CI/CD — o `deploy-aws.yml` deste repositório e o `terraform.yml` do `oficina-mecanica-infra-kubernetes` já detectam esse erro e imprimem uma dica de qual repositório aplicar primeiro, mas a causa é sempre a mesma: ordem errada de apply, ou `infra_environment`/branch apontando para um ambiente que nenhum dos outros dois repositórios aplicou ainda.
 
 1. Criar o backend remoto em `infra/backend` (uma única vez, compartilhado pelos três repositórios Terraform).
 2. Provisionar o banco no repositório `oficina-mecanica-infra-banco-dados`.
