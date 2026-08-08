@@ -1,13 +1,13 @@
 aws_region  = "us-east-1"
 environment = "dev"
-# Copie do output cluster_name do repositório oficina-mecanica-infra-kubernetes
-# (ou deixe vazio para usar <project_name>-<environment>, igual ao default daquele repositório).
-cluster_name = ""
-# Copie do output oidc_provider_arn do repositório oficina-mecanica-infra-kubernetes
-# após aplicar aquele Terraform.
-eks_oidc_provider_arn = ""
-# Copie do output rds_password do repositório oficina-mecanica-infra-banco-dados.
-postgres_password = ""
+# Bucket/região do backend S3 compartilhado (infra/backend) e keys de state dos
+# repositórios oficina-mecanica-infra-kubernetes e oficina-mecanica-infra-banco-dados.
+# Os defaults abaixo já cobrem o ambiente "dev"; ajuste só se usar outro ambiente
+# ou um bucket com nome diferente.
+tf_state_bucket       = "oficina-mecanica-fiap-terraform-state"
+tf_state_region       = "us-east-1"
+kubernetes_state_key  = "kubernetes/dev/terraform.tfstate"
+database_state_key    = "database/dev/terraform.tfstate"
 # Troque estes valores em ambientes reais.
 jwt_secret_key = "change-me-in-production"
 admin_password = "Admin@123"

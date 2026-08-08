@@ -1,5 +1,31 @@
+# Le automaticamente, via terraform_remote_state contra o mesmo backend S3
+# compartilhado (ver infra/backend), os outputs dos outros dois repositorios
+# Terraform da Fase 3: cluster/ECR/OIDC do oficina-mecanica-infra-kubernetes e
+# endpoint/senha do RDS do oficina-mecanica-infra-banco-dados. Isso elimina a
+# necessidade de copiar esses valores manualmente para variables/secrets do
+# GitHub a cada apply daqueles repositorios.
+data "terraform_remote_state" "kubernetes" {
+  backend = "s3"
+
+  config = {
+    bucket = var.tf_state_bucket
+    key    = var.kubernetes_state_key
+    region = var.tf_state_region
+  }
+}
+
+data "terraform_remote_state" "database" {
+  backend = "s3"
+
+  config = {
+    bucket = var.tf_state_bucket
+    key    = var.database_state_key
+    region = var.tf_state_region
+  }
+}
+
 locals {
-  cluster_name = var.cluster_name != "" ? var.cluster_name : "${var.project_name}-${var.environment}"
+  cluster_name = data.terraform_remote_state.kubernetes.outputs.cluster_name
 
   common_tags = merge(
     {
@@ -25,7 +51,7 @@ resource "aws_secretsmanager_secret_version" "app" {
   secret_string = jsonencode({
     ADMIN_PASSWORD    = var.admin_password
     JWT_SECRET_KEY    = var.jwt_secret_key
-    POSTGRES_PASSWORD = var.postgres_password
+    POSTGRES_PASSWORD = data.terraform_remote_state.database.outputs.rds_password
     SMTP_PASSWORD     = var.smtp_password
   })
 }
@@ -69,7 +95,7 @@ module "api_secrets_irsa" {
 
   oidc_providers = {
     main = {
-      provider_arn               = var.eks_oidc_provider_arn
+      provider_arn               = data.terraform_remote_state.kubernetes.outputs.oidc_provider_arn
       namespace_service_accounts = ["oficina-mecanica:oficina-mecanica-api"]
     }
   }

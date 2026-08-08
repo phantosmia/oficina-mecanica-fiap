@@ -93,6 +93,7 @@ Principais inputs:
 | Input | Padrão | Descrição |
 |---|---|---|
 | `deployment_mode` | `aws-academy` | Modo de deploy: `aws` ou `aws-academy` |
+| `infra_environment` | `dev` | Ambiente do state remoto do cluster/banco a consumir via `terraform_remote_state` (`kubernetes/<env>` e `database/<env>`) |
 | `terraform_apply` | `false` | Executa `terraform apply` antes do deploy |
 | `build_image` | `true` | Builda e publica a imagem no ECR antes de aplicar o deploy |
 | `image_tag` | `latest` | Tag da imagem no ECR |
@@ -111,26 +112,23 @@ Principais secrets e variables:
 | Secret | `ADMIN_PASSWORD` | Senha admin gravada no tfvars gerado |
 | Secret | `JWT_SECRET_KEY` | Chave JWT gravada no tfvars gerado |
 | Secret | `SMTP_PASSWORD` | Senha SMTP gravada no tfvars gerado |
-| Secret | `POSTGRES_PASSWORD` | Senha do RDS, copiada do output `rds_password` do repositório `oficina-mecanica-infra-banco-dados` |
 | Variable | `AWS_REGION` | Região AWS do EKS/ECR |
-| Variable | `CLUSTER_NAME` | Nome do cluster, copiado do output `cluster_name` do repositório `oficina-mecanica-infra-kubernetes` |
-| Variable | `ECR_REPOSITORY_URL` | URL do repositório ECR, copiada do output `ecr_repository_url` do mesmo repositório |
-| Variable | `EKS_OIDC_PROVIDER_ARN` | ARN do provider OIDC do cluster, copiado do output `oidc_provider_arn` do mesmo repositório — usado para criar a IRSA role do service account da API (modo `aws`) |
 | Variable | `TF_STATE_BUCKET` | Bucket S3 do state |
 | Variable | `TF_STATE_KEY` | Chave do state (deste repositório; padrão `aws/dev/terraform.tfstate`) |
 | Variable | `TF_STATE_REGION` | Região do backend S3 |
 | Variable | `TF_LOCK_TABLE` | Tabela DynamoDB de lock |
 | Variable | `PUBLIC_BASE_URL` | URL pública da API |
-| Variable | `RDS_ENDPOINT` | Endpoint do RDS, copiado do output `rds_endpoint` do repositório `oficina-mecanica-infra-banco-dados` |
+
+Não há mais variables `CLUSTER_NAME`, `ECR_REPOSITORY_URL`, `EKS_OIDC_PROVIDER_ARN`, `RDS_ENDPOINT` nem secret `POSTGRES_PASSWORD`: esses valores são lidos automaticamente via `terraform_remote_state` a partir dos outputs de `oficina-mecanica-infra-kubernetes` e `oficina-mecanica-infra-banco-dados`, controlados pelo input `infra_environment` (ver [infra/aws/README.md](../infra/aws/README.md)).
 
 O deploy faz, em ordem:
 
 1. Autenticação AWS via OIDC ou credenciais temporárias.
 2. `terraform init` com backend remoto (só o Terraform de `infra/aws`: secret da API + IRSA).
-3. `terraform plan` e, opcionalmente, `terraform apply`.
-4. Leitura dos outputs `app_secret_name` e `api_secrets_role_arn`.
-5. Build e push da imagem no ECR (`ECR_REPOSITORY_URL`), quando `build_image=true`.
-6. `aws eks update-kubeconfig` usando `CLUSTER_NAME`.
+3. `terraform plan` — nesse momento o Terraform já lê `cluster_name`, `ecr_repository_url`, `oidc_provider_arn`, `rds_endpoint` e `rds_password` via `terraform_remote_state` — e, opcionalmente, `terraform apply`.
+4. Leitura dos outputs `app_secret_name`, `api_secrets_role_arn`, `cluster_name`, `ecr_repository_url` e `rds_endpoint`.
+5. Build e push da imagem no ECR, quando `build_image=true`.
+6. `aws eks update-kubeconfig` usando o `cluster_name` lido no passo 3.
 7. Substituição dos placeholders do overlay selecionado.
 8. Criação da Secret Kubernetes a partir do AWS Secrets Manager no modo `aws-academy`.
 9. Remoção do Job antigo de migrations.

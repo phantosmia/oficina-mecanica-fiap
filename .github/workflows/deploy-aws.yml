@@ -10,6 +10,10 @@ on:
           - aws
           - aws-academy
         default: aws-academy
+      infra_environment:
+        description: "Ambiente do state remoto do cluster/banco a consumir (kubernetes/<env> e database/<env>)"
+        type: string
+        default: dev
       terraform_apply:
         description: "Executar terraform apply (secret + IRSA da API) antes do deploy?"
         type: boolean
@@ -41,8 +45,6 @@ concurrency:
 
 env:
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
-  CLUSTER_NAME: ${{ vars.CLUSTER_NAME }}
-  ECR_REPOSITORY_URL: ${{ vars.ECR_REPOSITORY_URL }}
   TF_BACKEND_CONFIG: ${{ secrets.TF_BACKEND_CONFIG }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
   TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'aws/dev/terraform.tfstate' }}
@@ -58,17 +60,6 @@ jobs:
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
-
-      - name: Validar variáveis obrigatórias do cluster
-        run: |
-          if [ -z "${CLUSTER_NAME}" ]; then
-            echo "Configure a variable CLUSTER_NAME com o output cluster_name do repositório oficina-mecanica-infra-kubernetes." >&2
-            exit 1
-          fi
-          if [ -z "${ECR_REPOSITORY_URL}" ]; then
-            echo "Configure a variable ECR_REPOSITORY_URL com o output ecr_repository_url do repositório oficina-mecanica-infra-kubernetes." >&2
-            exit 1
-          fi
 
       - name: Configurar credenciais AWS via OIDC
         if: ${{ inputs.deployment_mode == 'aws' }}
@@ -185,11 +176,12 @@ jobs:
         working-directory: infra/aws
         env:
           DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
+          INFRA_ENVIRONMENT: ${{ inputs.infra_environment }}
           ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
           JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
           SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
-          POSTGRES_PASSWORD_SECRET: ${{ secrets.POSTGRES_PASSWORD }}
-          EKS_OIDC_PROVIDER_ARN: ${{ vars.EKS_OIDC_PROVIDER_ARN }}
+          TF_BACKEND_BUCKET: ${{ env.TF_BACKEND_BUCKET }}
+          TF_BACKEND_REGION: ${{ env.TF_BACKEND_REGION }}
         run: |
           python - <<'PY'
           import json
@@ -202,10 +194,20 @@ jobs:
               values["jwt_secret_key"] = os.environ["JWT_SECRET_KEY_SECRET"]
           if os.environ.get("SMTP_PASSWORD_SECRET"):
               values["smtp_password"] = os.environ["SMTP_PASSWORD_SECRET"]
-          if os.environ.get("POSTGRES_PASSWORD_SECRET"):
-              values["postgres_password"] = os.environ["POSTGRES_PASSWORD_SECRET"]
-          if os.environ.get("EKS_OIDC_PROVIDER_ARN"):
-              values["eks_oidc_provider_arn"] = os.environ["EKS_OIDC_PROVIDER_ARN"]
+
+          # cluster_name, ecr_repository_url, oidc_provider_arn (do repositorio
+          # oficina-mecanica-infra-kubernetes) e rds_endpoint/rds_password (do
+          # repositorio oficina-mecanica-infra-banco-dados) sao lidos automaticamente
+          # via terraform_remote_state, contra o mesmo bucket usado pelo backend
+          # deste repositorio. So a key de cada state muda por ambiente.
+          if os.environ.get("TF_BACKEND_BUCKET"):
+              values["tf_state_bucket"] = os.environ["TF_BACKEND_BUCKET"]
+          if os.environ.get("TF_BACKEND_REGION"):
+              values["tf_state_region"] = os.environ["TF_BACKEND_REGION"]
+
+          infra_environment = os.environ.get("INFRA_ENVIRONMENT") or "dev"
+          values["kubernetes_state_key"] = f"kubernetes/{infra_environment}/terraform.tfstate"
+          values["database_state_key"] = f"database/{infra_environment}/terraform.tfstate"
 
           if os.environ["DEPLOYMENT_MODE"] == "aws-academy":
               # AWS Academy Lab bloqueia iam:CreateRole: a IRSA role do service account
@@ -244,6 +246,9 @@ jobs:
           keys = [
             "app_secret_name",
             "api_secrets_role_arn",
+            "cluster_name",
+            "ecr_repository_url",
+            "rds_endpoint",
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as github_output:
             for key in keys:
@@ -254,14 +259,15 @@ jobs:
       - name: Login no Amazon ECR
         if: ${{ inputs.build_image }}
         run: |
-          ECR_REGISTRY="${ECR_REPOSITORY_URL%/*}"
+          ECR_REGISTRY="${{ steps.tf.outputs.ecr_repository_url }}"
+          ECR_REGISTRY="${ECR_REGISTRY%/*}"
           aws ecr get-login-password --region "${AWS_REGION}" \
             | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
       - name: Build e push da imagem
         if: ${{ inputs.build_image }}
         run: |
-          IMAGE="${ECR_REPOSITORY_URL}:${{ inputs.image_tag }}"
+          IMAGE="${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
           docker build -t oficina-mecanica-fiap:${{ inputs.image_tag }} .
           docker tag oficina-mecanica-fiap:${{ inputs.image_tag }} "${IMAGE}"
           docker push "${IMAGE}"
@@ -270,7 +276,7 @@ jobs:
         run: |
           aws eks update-kubeconfig \
             --region "${AWS_REGION}" \
-            --name "${CLUSTER_NAME}"
+            --name "${{ steps.tf.outputs.cluster_name }}"
 
       - name: Preparar overlay AWS completo
         if: ${{ inputs.deployment_mode == 'aws' }}
@@ -283,13 +289,9 @@ jobs:
             echo "Configure o input public_base_url ou a variable PUBLIC_BASE_URL." >&2
             exit 1
           fi
-          if [ -z "${{ vars.RDS_ENDPOINT }}" ]; then
-            echo "Configure a variable RDS_ENDPOINT com o output rds_endpoint do repositório oficina-mecanica-infra-banco-dados." >&2
-            exit 1
-          fi
 
           sed -i \
-            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ vars.RDS_ENDPOINT }}|g" \
+            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
             -e "s|https://REPLACE_WITH_PUBLIC_API_HOST|${PUBLIC_BASE_URL}|g" \
             k8s/overlays/aws/patch-configmap-rds.yaml
 
@@ -303,7 +305,7 @@ jobs:
             k8s/overlays/aws/service-account.yaml
 
           sed -i \
-            -e "s|newName: .*|newName: ${ECR_REPOSITORY_URL}|g" \
+            -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
             -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
             k8s/overlays/aws/kustomization.yaml
 
@@ -314,18 +316,14 @@ jobs:
           if [ -z "${PUBLIC_BASE_URL}" ]; then
             PUBLIC_BASE_URL="http://localhost:8000"
           fi
-          if [ -z "${{ vars.RDS_ENDPOINT }}" ]; then
-            echo "Configure a variable RDS_ENDPOINT com o output rds_endpoint do repositório oficina-mecanica-infra-banco-dados." >&2
-            exit 1
-          fi
 
           sed -i \
-            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ vars.RDS_ENDPOINT }}|g" \
+            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
             -e "s|http://localhost:8000|${PUBLIC_BASE_URL}|g" \
             k8s/overlays/aws-academy/patch-configmap-rds.yaml
 
           sed -i \
-            -e "s|newName: .*|newName: ${ECR_REPOSITORY_URL}|g" \
+            -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
             -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
             k8s/overlays/aws-academy/kustomization.yaml
 
@@ -396,8 +394,8 @@ jobs:
 
       - name: Resumo do deploy
         run: |
-          echo "Cluster: ${CLUSTER_NAME}"
-          echo "Imagem: ${ECR_REPOSITORY_URL}:${{ inputs.image_tag }}"
+          echo "Cluster: ${{ steps.tf.outputs.cluster_name }}"
+          echo "Imagem: ${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
           kubectl get job oficina-mecanica-migrations -n oficina-mecanica
           kubectl get deployment oficina-mecanica-api -n oficina-mecanica
           kubectl get svc oficina-mecanica-api -n oficina-mecanica
