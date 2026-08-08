@@ -106,58 +106,17 @@ variable "ecr_force_delete" {
   default     = false
 }
 
-variable "rds_instance_class" {
-  description = "Classe da instância RDS PostgreSQL."
+variable "rds_secret_arn" {
+  description = "ARN do secret do Secrets Manager com as credenciais do RDS, provisionado pelo repositório oficina-mecanica-infra-banco-dados."
   type        = string
-  default     = "db.t4g.micro"
+  default     = ""
 }
 
-variable "rds_allocated_storage" {
-  description = "Armazenamento inicial do RDS, em GiB."
-  type        = number
-  default     = 20
-}
-
-variable "rds_max_allocated_storage" {
-  description = "Armazenamento máximo para autoscaling do RDS, em GiB."
-  type        = number
-  default     = 100
-}
-
-variable "rds_engine_version" {
-  description = "Versão do PostgreSQL no RDS."
+variable "postgres_password" {
+  description = "Senha do RDS PostgreSQL, copiada do output rds_password do repositório oficina-mecanica-infra-banco-dados."
   type        = string
-  default     = "16.3"
-}
-
-variable "rds_database_name" {
-  description = "Nome do database PostgreSQL usado pela aplicação."
-  type        = string
-  default     = "oficina_mecanica"
-}
-
-variable "rds_username" {
-  description = "Usuário master do PostgreSQL no RDS."
-  type        = string
-  default     = "oficina"
-}
-
-variable "rds_backup_retention_period" {
-  description = "Retenção de backups automáticos do RDS, em dias."
-  type        = number
-  default     = 7
-}
-
-variable "rds_deletion_protection" {
-  description = "Protege a instância RDS contra deleção acidental."
-  type        = bool
-  default     = false
-}
-
-variable "rds_skip_final_snapshot" {
-  description = "Pula snapshot final ao destruir o RDS. Use false em produção."
-  type        = bool
-  default     = true
+  sensitive   = true
+  default     = ""
 }
 
 variable "github_repository" {

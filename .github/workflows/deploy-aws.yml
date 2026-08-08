@@ -175,11 +175,11 @@ jobs:
           ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
           JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
           SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
+          POSTGRES_PASSWORD_SECRET: ${{ secrets.POSTGRES_PASSWORD }}
+          RDS_SECRET_ARN: ${{ vars.RDS_SECRET_ARN }}
           EKS_ADMIN_PRINCIPAL_ARN: ${{ vars.EKS_ADMIN_PRINCIPAL_ARN }}
           EKS_CLUSTER_ROLE_ARN: ${{ vars.EKS_CLUSTER_ROLE_ARN }}
           EKS_NODE_ROLE_ARN: ${{ vars.EKS_NODE_ROLE_ARN }}
-          RDS_ENGINE_VERSION: ${{ vars.RDS_ENGINE_VERSION || '16.14' }}
-          RDS_MAX_ALLOCATED_STORAGE: ${{ vars.RDS_MAX_ALLOCATED_STORAGE || '20' }}
           NODE_DESIRED_SIZE: ${{ vars.NODE_DESIRED_SIZE || '1' }}
           NODE_MIN_SIZE: ${{ vars.NODE_MIN_SIZE || '1' }}
           NODE_MAX_SIZE: ${{ vars.NODE_MAX_SIZE || '2' }}
@@ -196,6 +196,10 @@ jobs:
               values["jwt_secret_key"] = os.environ["JWT_SECRET_KEY_SECRET"]
           if os.environ.get("SMTP_PASSWORD_SECRET"):
               values["smtp_password"] = os.environ["SMTP_PASSWORD_SECRET"]
+          if os.environ.get("POSTGRES_PASSWORD_SECRET"):
+              values["postgres_password"] = os.environ["POSTGRES_PASSWORD_SECRET"]
+          if os.environ.get("RDS_SECRET_ARN"):
+              values["rds_secret_arn"] = os.environ["RDS_SECRET_ARN"]
 
           if os.environ["DEPLOYMENT_MODE"] == "aws-academy":
               required = [
@@ -216,8 +220,6 @@ jobs:
                       "enable_github_actions_oidc": False,
                       "install_aws_load_balancer_controller": False,
                       "install_external_secrets_operator": False,
-                      "rds_engine_version": os.environ["RDS_ENGINE_VERSION"],
-                      "rds_max_allocated_storage": int(os.environ["RDS_MAX_ALLOCATED_STORAGE"]),
                       "node_desired_size": int(os.environ["NODE_DESIRED_SIZE"]),
                       "node_min_size": int(os.environ["NODE_MIN_SIZE"]),
                       "node_max_size": int(os.environ["NODE_MAX_SIZE"]),
@@ -309,7 +311,6 @@ jobs:
           keys = [
             "cluster_name",
             "ecr_repository_url",
-            "rds_endpoint",
             "app_secret_name",
             "api_secrets_role_arn",
           ]
@@ -352,9 +353,13 @@ jobs:
             echo "Configure o input public_base_url ou a variable PUBLIC_BASE_URL." >&2
             exit 1
           fi
+          if [ -z "${{ vars.RDS_ENDPOINT }}" ]; then
+            echo "Configure a variable RDS_ENDPOINT com o output rds_endpoint do repositório oficina-mecanica-infra-banco-dados." >&2
+            exit 1
+          fi
 
           sed -i \
-            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
+            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ vars.RDS_ENDPOINT }}|g" \
             -e "s|https://REPLACE_WITH_PUBLIC_API_HOST|${PUBLIC_BASE_URL}|g" \
             k8s/overlays/aws/patch-configmap-rds.yaml
 
@@ -379,9 +384,13 @@ jobs:
           if [ -z "${PUBLIC_BASE_URL}" ]; then
             PUBLIC_BASE_URL="http://localhost:8000"
           fi
+          if [ -z "${{ vars.RDS_ENDPOINT }}" ]; then
+            echo "Configure a variable RDS_ENDPOINT com o output rds_endpoint do repositório oficina-mecanica-infra-banco-dados." >&2
+            exit 1
+          fi
 
           sed -i \
-            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
+            -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ vars.RDS_ENDPOINT }}|g" \
             -e "s|http://localhost:8000|${PUBLIC_BASE_URL}|g" \
             k8s/overlays/aws-academy/patch-configmap-rds.yaml
 

@@ -111,17 +111,18 @@ Principais secrets e variables:
 | Secret | `ADMIN_PASSWORD` | Senha admin gravada no tfvars gerado |
 | Secret | `JWT_SECRET_KEY` | Chave JWT gravada no tfvars gerado |
 | Secret | `SMTP_PASSWORD` | Senha SMTP gravada no tfvars gerado |
-| Variable | `AWS_REGION` | Região AWS do EKS/RDS/ECR |
+| Secret | `POSTGRES_PASSWORD` | Senha do RDS, copiada do output `rds_password` do repositório `oficina-mecanica-infra-banco-dados` |
+| Variable | `AWS_REGION` | Região AWS do EKS/ECR |
 | Variable | `TF_STATE_BUCKET` | Bucket S3 do state |
 | Variable | `TF_STATE_KEY` | Chave do state |
 | Variable | `TF_STATE_REGION` | Região do backend S3 |
 | Variable | `TF_LOCK_TABLE` | Tabela DynamoDB de lock |
 | Variable | `PUBLIC_BASE_URL` | URL pública da API |
+| Variable | `RDS_ENDPOINT` | Endpoint do RDS, copiado do output `rds_endpoint` do repositório `oficina-mecanica-infra-banco-dados` |
+| Variable | `RDS_SECRET_ARN` | ARN do secret do RDS no Secrets Manager, copiado do output `rds_secret_arn` do mesmo repositório |
 | Variable | `EKS_ADMIN_PRINCIPAL_ARN` | Principal administrativo do EKS no AWS Academy |
 | Variable | `EKS_CLUSTER_ROLE_ARN` | Role do control plane no AWS Academy |
 | Variable | `EKS_NODE_ROLE_ARN` | Role do node group no AWS Academy |
-| Variable | `RDS_ENGINE_VERSION` | Versão do RDS no AWS Academy |
-| Variable | `RDS_MAX_ALLOCATED_STORAGE` | Limite de autoscaling do RDS |
 | Variable | `NODE_DESIRED_SIZE` | Tamanho desejado do node group |
 | Variable | `NODE_MIN_SIZE` | Tamanho mínimo do node group |
 | Variable | `NODE_MAX_SIZE` | Tamanho máximo do node group |

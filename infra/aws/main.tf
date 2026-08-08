@@ -157,92 +157,6 @@ resource "aws_ecr_lifecycle_policy" "api" {
   })
 }
 
-resource "random_password" "rds_master" {
-  length           = 24
-  special          = true
-  override_special = "!#$%&*()-_=+[]{}<>:?"
-}
-
-resource "aws_security_group" "rds" {
-  name        = "${local.cluster_name}-rds"
-  description = "Allow PostgreSQL access from EKS nodes"
-  vpc_id      = module.vpc.vpc_id
-
-  ingress {
-    description     = "PostgreSQL from EKS nodes"
-    from_port       = 5432
-    to_port         = 5432
-    protocol        = "tcp"
-    security_groups = [module.eks.node_security_group_id]
-  }
-
-  egress {
-    description = "Allow all outbound traffic"
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(local.common_tags, { Name = "${local.cluster_name}-rds" })
-}
-
-resource "aws_db_subnet_group" "postgres" {
-  name       = "${local.cluster_name}-postgres"
-  subnet_ids = module.vpc.private_subnets
-
-  tags = merge(local.common_tags, { Name = "${local.cluster_name}-postgres" })
-}
-
-resource "aws_db_instance" "postgres" {
-  identifier = "${local.cluster_name}-postgres"
-
-  engine         = "postgres"
-  engine_version = var.rds_engine_version
-  instance_class = var.rds_instance_class
-
-  allocated_storage     = var.rds_allocated_storage
-  max_allocated_storage = var.rds_max_allocated_storage
-  storage_type          = "gp3"
-  storage_encrypted     = true
-
-  db_name  = var.rds_database_name
-  username = var.rds_username
-  password = random_password.rds_master.result
-
-  db_subnet_group_name   = aws_db_subnet_group.postgres.name
-  vpc_security_group_ids = [aws_security_group.rds.id]
-  publicly_accessible    = false
-
-  backup_retention_period = var.rds_backup_retention_period
-  deletion_protection     = var.rds_deletion_protection
-  skip_final_snapshot     = var.rds_skip_final_snapshot
-
-  auto_minor_version_upgrade = true
-  copy_tags_to_snapshot      = true
-
-  tags = local.common_tags
-}
-
-resource "aws_secretsmanager_secret" "rds" {
-  name                    = "${local.cluster_name}/postgres"
-  recovery_window_in_days = 7
-
-  tags = local.common_tags
-}
-
-resource "aws_secretsmanager_secret_version" "rds" {
-  secret_id = aws_secretsmanager_secret.rds.id
-
-  secret_string = jsonencode({
-    host     = aws_db_instance.postgres.address
-    port     = aws_db_instance.postgres.port
-    dbname   = aws_db_instance.postgres.db_name
-    username = aws_db_instance.postgres.username
-    password = random_password.rds_master.result
-  })
-}
-
 resource "aws_secretsmanager_secret" "app" {
   name                    = "${local.cluster_name}/api"
   recovery_window_in_days = 7
@@ -256,7 +170,7 @@ resource "aws_secretsmanager_secret_version" "app" {
   secret_string = jsonencode({
     ADMIN_PASSWORD    = var.admin_password
     JWT_SECRET_KEY    = var.jwt_secret_key
-    POSTGRES_PASSWORD = random_password.rds_master.result
+    POSTGRES_PASSWORD = var.postgres_password
     SMTP_PASSWORD     = var.smtp_password
   })
 }
@@ -321,7 +235,7 @@ data "aws_iam_policy_document" "external_secrets" {
 
     resources = [
       aws_secretsmanager_secret.app.arn,
-      aws_secretsmanager_secret.rds.arn
+      var.rds_secret_arn
     ]
   }
 }

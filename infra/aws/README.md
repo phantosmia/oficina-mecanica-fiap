@@ -6,7 +6,6 @@ Infraestrutura AWS para executar a aplicação em Kubernetes com:
 - Amazon EKS
 - node group gerenciado
 - Amazon ECR para a imagem da API
-- Amazon RDS PostgreSQL
 - AWS Secrets Manager para credenciais sensíveis da API
 - External Secrets Operator para sincronizar Secrets Manager com Kubernetes Secret
 - IAM Role for Service Accounts (IRSA) para o AWS Load Balancer Controller
@@ -14,11 +13,14 @@ Infraestrutura AWS para executar a aplicação em Kubernetes com:
 - instalação do metrics-server via Helm para habilitar HPA
 - IAM Role OIDC para GitHub Actions publicar imagens no ECR
 
+O **RDS PostgreSQL não é provisionado aqui**: é responsabilidade do repositório [`oficina-mecanica-infra-banco-dados`](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados), que expõe o endpoint e as credenciais via Secrets Manager. Este Terraform só consome esses dados via as variáveis `rds_secret_arn` e `postgres_password`.
+
 ## Pré-requisitos
 
 - Terraform >= 1.6
 - AWS CLI autenticado
-- permissões para criar VPC, EKS, ECR, IAM, EC2, RDS e Secrets Manager
+- permissões para criar VPC, EKS, ECR, IAM e EC2
+- RDS já provisionado pelo repositório `oficina-mecanica-infra-banco-dados`, com os outputs `rds_endpoint`, `rds_secret_arn` e `rds_password` em mãos
 
 ## Uso
 
@@ -69,9 +71,7 @@ Copie o comando exibido e execute-o.
 - `REPLACE_WITH_APP_SECRET_NAME` em `k8s/overlays/aws/external-secret.yaml`
 - `REPLACE_WITH_API_SECRETS_ROLE_ARN` em `k8s/overlays/aws/service-account.yaml`
 
-Os valores podem ser obtidos com:
-
-`terraform output -raw rds_endpoint`
+O valor de `REPLACE_WITH_RDS_ENDPOINT` vem do repositório `oficina-mecanica-infra-banco-dados` (`terraform output -raw rds_endpoint` naquele repositório). Os demais podem ser obtidos com:
 
 `terraform output -raw app_secret_name`
 
@@ -104,8 +104,10 @@ Configure no GitHub:
 
 - secret `AWS_DEPLOY_ROLE_TO_ASSUME`: role OIDC com permissões para Terraform, EKS e leitura do state remoto. Se não existir, o workflow usa `AWS_ROLE_TO_ASSUME`.
 - secret `TF_BACKEND_CONFIG`: conteúdo completo do `backend.hcl`. Alternativamente, configure as variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_STATE_REGION` e `TF_LOCK_TABLE`.
-- secrets `ADMIN_PASSWORD`, `JWT_SECRET_KEY` e `SMTP_PASSWORD`: valores gravados em `terraform.auto.tfvars.json` durante o workflow quando estiverem configurados.
-- variable `AWS_REGION`: região do EKS/RDS/ECR.
+- secrets `ADMIN_PASSWORD`, `JWT_SECRET_KEY`, `SMTP_PASSWORD` e `POSTGRES_PASSWORD`: valores gravados em `terraform.auto.tfvars.json` durante o workflow quando estiverem configurados. `POSTGRES_PASSWORD` vem do output `rds_password` do repositório `oficina-mecanica-infra-banco-dados`.
+- variable `RDS_SECRET_ARN`: ARN do secret do Secrets Manager com as credenciais do RDS, output `rds_secret_arn` do repositório `oficina-mecanica-infra-banco-dados`.
+- variable `RDS_ENDPOINT`: endpoint do RDS, output `rds_endpoint` do mesmo repositório — usado para substituir `REPLACE_WITH_RDS_ENDPOINT` no overlay Kubernetes.
+- variable `AWS_REGION`: região do EKS/ECR.
 - variable `PUBLIC_BASE_URL`: URL pública da API usada nos e-mails, caso o input `public_base_url` não seja informado.
 
 Se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests.
@@ -123,6 +125,6 @@ O Terraform instala o `metrics-server` via Helm por padrão para permitir que o 
 ## Observações
 
 - O cluster é criado com endpoint público para simplificar o bootstrap inicial.
-- No overlay AWS, a aplicação usa RDS e o PostgreSQL interno do Kubernetes é removido por patch.
+- No overlay AWS, a aplicação usa o RDS provisionado pelo repositório `oficina-mecanica-infra-banco-dados`, e o PostgreSQL interno do Kubernetes é removido por patch.
 - Senhas e chaves da API são armazenadas no AWS Secrets Manager e sincronizadas para o Kubernetes pelo External Secrets Operator.
 - O overlay AWS usa `Ingress` com `ingressClassName: alb`, então depende do AWS Load Balancer Controller instalado no cluster.
