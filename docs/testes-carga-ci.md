@@ -76,16 +76,16 @@ O job `build` valida o build da imagem Docker com `docker build` e roda após `t
 
 ## Deploy manual AWS/EKS
 
-O workflow [.github/workflows/deploy-aws.yml](../.github/workflows/deploy-aws.yml) executa deploy real no EKS via `workflow_dispatch`.
+O workflow [.github/workflows/deploy-aws.yml](../.github/workflows/deploy-aws.yml) executa deploy real no EKS via `workflow_dispatch`. Ele **não** provisiona cluster, node group ou ECR — isso é feito separadamente no repositório [`oficina-mecanica-infra-kubernetes`](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes); este workflow só roda o Terraform de `infra/aws` (secret da API + IRSA do seu service account) e o deploy Kubernetes.
 
 Modos:
 
-- `deployment_mode=aws`: usa OIDC, IRSA, External Secrets Operator e AWS Load Balancer Controller, aplicando `k8s/overlays/aws`.
-- `deployment_mode=aws-academy`: usa credenciais temporárias do AWS Academy Lab, reutiliza as roles pré-criadas do lab, desabilita IRSA/OIDC/ALB Controller/External Secrets Operator e aplica `k8s/overlays/aws-academy`.
+- `deployment_mode=aws`: usa OIDC, IRSA e External Secrets Operator, aplicando `k8s/overlays/aws`.
+- `deployment_mode=aws-academy`: usa credenciais temporárias do AWS Academy Lab, desabilita a criação da IRSA role deste repositório (`enable_irsa_resources=false`) e aplica `k8s/overlays/aws-academy`, criando a Secret Kubernetes diretamente a partir do Secrets Manager.
 
 Em ambos os modos:
 
-- `terraform_apply=false`: executa `terraform init` e `terraform plan`, lê outputs do Terraform e faz o deploy Kubernetes sem aplicar mudanças de infraestrutura.
+- `terraform_apply=false`: executa `terraform init` e `terraform plan` (de `infra/aws`), lê outputs do Terraform e faz o deploy Kubernetes sem aplicar mudanças de infraestrutura.
 - `terraform_apply=true`: roda `terraform plan`, aplica `terraform apply -auto-approve` e depois faz o deploy Kubernetes.
 
 Principais inputs:
@@ -103,7 +103,7 @@ Principais secrets e variables:
 
 | Tipo | Nome | Descrição |
 |---|---|---|
-| Secret | `AWS_DEPLOY_ROLE_TO_ASSUME` | Modo `aws`: role OIDC com permissão para Terraform/EKS |
+| Secret | `AWS_DEPLOY_ROLE_TO_ASSUME` | Modo `aws`: role OIDC com permissão para Terraform (Secrets Manager/IAM) e EKS |
 | Secret | `AWS_ACCESS_KEY_ID` | Modo `aws-academy`: access key temporária |
 | Secret | `AWS_SECRET_ACCESS_KEY` | Modo `aws-academy`: secret key temporária |
 | Secret | `AWS_SESSION_TOKEN` | Modo `aws-academy`: session token temporário |
@@ -113,33 +113,30 @@ Principais secrets e variables:
 | Secret | `SMTP_PASSWORD` | Senha SMTP gravada no tfvars gerado |
 | Secret | `POSTGRES_PASSWORD` | Senha do RDS, copiada do output `rds_password` do repositório `oficina-mecanica-infra-banco-dados` |
 | Variable | `AWS_REGION` | Região AWS do EKS/ECR |
+| Variable | `CLUSTER_NAME` | Nome do cluster, copiado do output `cluster_name` do repositório `oficina-mecanica-infra-kubernetes` |
+| Variable | `ECR_REPOSITORY_URL` | URL do repositório ECR, copiada do output `ecr_repository_url` do mesmo repositório |
+| Variable | `EKS_OIDC_PROVIDER_ARN` | ARN do provider OIDC do cluster, copiado do output `oidc_provider_arn` do mesmo repositório — usado para criar a IRSA role do service account da API (modo `aws`) |
 | Variable | `TF_STATE_BUCKET` | Bucket S3 do state |
-| Variable | `TF_STATE_KEY` | Chave do state |
+| Variable | `TF_STATE_KEY` | Chave do state (deste repositório; padrão `aws/dev/terraform.tfstate`) |
 | Variable | `TF_STATE_REGION` | Região do backend S3 |
 | Variable | `TF_LOCK_TABLE` | Tabela DynamoDB de lock |
 | Variable | `PUBLIC_BASE_URL` | URL pública da API |
 | Variable | `RDS_ENDPOINT` | Endpoint do RDS, copiado do output `rds_endpoint` do repositório `oficina-mecanica-infra-banco-dados` |
-| Variable | `RDS_SECRET_ARN` | ARN do secret do RDS no Secrets Manager, copiado do output `rds_secret_arn` do mesmo repositório |
-| Variable | `EKS_ADMIN_PRINCIPAL_ARN` | Principal administrativo do EKS no AWS Academy |
-| Variable | `EKS_CLUSTER_ROLE_ARN` | Role do control plane no AWS Academy |
-| Variable | `EKS_NODE_ROLE_ARN` | Role do node group no AWS Academy |
-| Variable | `NODE_DESIRED_SIZE` | Tamanho desejado do node group |
-| Variable | `NODE_MIN_SIZE` | Tamanho mínimo do node group |
-| Variable | `NODE_MAX_SIZE` | Tamanho máximo do node group |
-| Variable | `NODE_DISK_SIZE` | Disco dos nodes em GiB |
 
 O deploy faz, em ordem:
 
 1. Autenticação AWS via OIDC ou credenciais temporárias.
-2. `terraform init` com backend remoto.
+2. `terraform init` com backend remoto (só o Terraform de `infra/aws`: secret da API + IRSA).
 3. `terraform plan` e, opcionalmente, `terraform apply`.
-4. Leitura dos outputs `cluster_name`, `ecr_repository_url`, `rds_endpoint`, `app_secret_name` e `api_secrets_role_arn`.
-5. Build e push da imagem no ECR, quando `build_image=true`.
-6. `aws eks update-kubeconfig`.
+4. Leitura dos outputs `app_secret_name` e `api_secrets_role_arn`.
+5. Build e push da imagem no ECR (`ECR_REPOSITORY_URL`), quando `build_image=true`.
+6. `aws eks update-kubeconfig` usando `CLUSTER_NAME`.
 7. Substituição dos placeholders do overlay selecionado.
 8. Criação da Secret Kubernetes a partir do AWS Secrets Manager no modo `aws-academy`.
 9. Remoção do Job antigo de migrations.
 10. `kubectl apply -k k8s/overlays/<deployment_mode>`.
 11. Espera do Job de migrations e rollout da API.
+
+O cluster, o node group e o repositório ECR são provisionados e mantidos pelo workflow [`.github/workflows/terraform.yml`](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes/blob/main/.github/workflows/terraform.yml) do repositório `oficina-mecanica-infra-kubernetes`, não por este.
 
 O workflow [.github/workflows/publish-ecr.yml](../.github/workflows/publish-ecr.yml) também suporta o lab e usa o environment `aws`.
