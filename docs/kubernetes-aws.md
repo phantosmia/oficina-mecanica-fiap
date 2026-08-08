@@ -97,22 +97,23 @@ A Fase 3 do Tech Challenge exige repositórios Terraform separados por responsab
 - [`oficina-mecanica-infra-banco-dados`](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) provisiona o **RDS PostgreSQL** (Terraform próprio, com sua própria VPC).
 - Este repositório (`oficina-mecanica-fiap`), em `infra/aws`, provisiona só o que é específico da aplicação: o secret da API no **AWS Secrets Manager** e a **IRSA role** do ServiceAccount `oficina-mecanica-api` usada pelo External Secrets Operator para lê-lo.
 
-Este repositório consome os outputs dos outros dois via variables/secrets do GitHub: `CLUSTER_NAME`, `ECR_REPOSITORY_URL` e `EKS_OIDC_PROVIDER_ARN` (de `oficina-mecanica-infra-kubernetes`) e `RDS_ENDPOINT`, `RDS_SECRET_ARN` e `POSTGRES_PASSWORD` (de `oficina-mecanica-infra-banco-dados`) — ver tabela em [testes-carga-ci.md](testes-carga-ci.md).
+Este repositório lê os outputs dos outros dois **automaticamente**, via `terraform_remote_state` contra o mesmo bucket S3 do backend remoto (`cluster_name`, `ecr_repository_url` e `oidc_provider_arn` de `oficina-mecanica-infra-kubernetes`; `rds_endpoint` e `rds_password` de `oficina-mecanica-infra-banco-dados`) — não é preciso copiar esses valores em variables/secrets do GitHub. Só a role OIDC do GitHub Actions (`AWS_ROLE_TO_ASSUME`) e o CIDR da VPC para `allowed_cidr_blocks` do banco continuam sendo copiados manualmente, por não serem dado de state — ver [infra/aws/README.md](../infra/aws/README.md).
 
 O backend remoto do Terraform fica em `infra/backend` e cria S3 para state e DynamoDB para lock — os repositórios `oficina-mecanica-infra-kubernetes` e `oficina-mecanica-infra-banco-dados` reaproveitam o mesmo bucket/tabela, só com uma `key` de state diferente cada um.
 
 ## Fluxo Terraform sugerido
 
+Os três repositórios Terraform compartilham o mesmo backend S3 e se conectam via `terraform_remote_state` (ver [infra/aws/README.md](../infra/aws/README.md)), então a única coisa que importa é a **ordem de apply**: banco → cluster → aplicação. Nenhum output precisa ser copiado manualmente entre eles.
+
 1. Criar o backend remoto em `infra/backend` (uma única vez, compartilhado pelos três repositórios Terraform).
-2. Provisionar o cluster no repositório `oficina-mecanica-infra-kubernetes` e anotar os outputs `cluster_name`, `ecr_repository_url` e `oidc_provider_arn`.
-3. Provisionar o banco no repositório `oficina-mecanica-infra-banco-dados` e anotar os outputs `rds_endpoint`, `rds_secret_arn` e `rds_password`.
-4. Copiar `infra/aws/backend.hcl.example` para `infra/aws/backend.hcl` e ajustar bucket, região e tabela (neste repositório).
-5. Copiar `infra/aws/terraform.tfvars.example` para `infra/aws/terraform.tfvars` e preencher `cluster_name`, `eks_oidc_provider_arn` e `postgres_password` com os outputs anotados nos passos 2 e 3.
-6. Executar `terraform init -backend-config=backend.hcl`, `terraform plan` e `terraform apply` em `infra/aws`.
-7. Configurar o kubeconfig usando o comando retornado pelo Terraform do repositório `oficina-mecanica-infra-kubernetes` (`terraform output -raw configure_kubectl_command`).
-8. Autenticar no ECR e publicar a imagem, usando `terraform output -raw ecr_login_command` e `terraform output -raw ecr_repository_url` do mesmo repositório.
-9. Atualizar o overlay AWS com outputs de ECR, RDS, Secrets Manager e IRSA.
-10. Remover o Job antigo de migrations e aplicar o overlay AWS.
+2. Provisionar o banco no repositório `oficina-mecanica-infra-banco-dados`.
+3. Provisionar o cluster no repositório `oficina-mecanica-infra-kubernetes` (lê `rds_secret_arn` do passo 2 automaticamente).
+4. Copiar `infra/aws/backend.hcl.example` para `infra/aws/backend.hcl` (neste repositório) e `infra/aws/terraform.tfvars.example` para `infra/aws/terraform.tfvars` — os defaults já apontam para o ambiente `dev` dos outros dois repositórios.
+5. Executar `terraform init -backend-config=backend.hcl`, `terraform plan` e `terraform apply` em `infra/aws` (lê `cluster_name`, `oidc_provider_arn` e `ecr_repository_url` do passo 3, e `rds_password` do passo 2, automaticamente).
+6. Configurar o kubeconfig: `aws eks update-kubeconfig --region <região> --name $(terraform output -raw cluster_name)`.
+7. Autenticar no ECR e publicar a imagem, usando `terraform output -raw ecr_repository_url` (deste repositório, repassado do repositório de Kubernetes).
+8. Atualizar o overlay AWS com os outputs de ECR, RDS, Secrets Manager e IRSA.
+9. Remover o Job antigo de migrations e aplicar o overlay AWS.
 
 Exemplo:
 
@@ -120,6 +121,13 @@ Exemplo:
 cd infra/backend
 cp terraform.tfvars.example terraform.tfvars
 terraform init
+terraform plan
+terraform apply
+
+# Em um checkout separado do repositório oficina-mecanica-infra-banco-dados:
+cp backend.hcl.example backend.hcl
+cp terraform.tfvars.example terraform.tfvars
+terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 
@@ -133,24 +141,20 @@ terraform apply
 # De volta neste repositório:
 cd infra/aws
 cp backend.hcl.example backend.hcl
-cp terraform.tfvars.example terraform.tfvars   # preencha cluster_name, eks_oidc_provider_arn, postgres_password
+cp terraform.tfvars.example terraform.tfvars
 terraform init -backend-config=backend.hcl
 terraform plan
 terraform apply
 ```
 
-Configure o acesso ao cluster:
+Configure o acesso ao cluster e publique a imagem no ECR, usando os outputs deste repositório (já repassados via remote state):
 
 ```bash
-aws eks update-kubeconfig --region us-east-1 --name oficina-mecanica-dev
-```
+aws eks update-kubeconfig --region us-east-1 --name $(terraform output -raw cluster_name)
 
-Publique a imagem no ECR (URL obtida no repositório `oficina-mecanica-infra-kubernetes`):
-
-```bash
 docker build -t oficina-mecanica-fiap:latest .
-docker tag oficina-mecanica-fiap:latest <ECR_REPOSITORY_URL>:latest
-docker push <ECR_REPOSITORY_URL>:latest
+docker tag oficina-mecanica-fiap:latest $(terraform output -raw ecr_repository_url):latest
+docker push $(terraform output -raw ecr_repository_url):latest
 ```
 
 Aplique o overlay AWS:
