@@ -11,6 +11,7 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 | [0001](0001-padrao-de-comunicacao-sincrono.md) | Padrão de comunicação síncrono via REST/HTTP | Aceito |
 | [0002](0002-uso-de-hpa-para-escalabilidade.md) | Uso de HPA para escalabilidade automática | Aceito |
 | [0003](0003-postgresql-gerenciado-rds.md) | PostgreSQL gerenciado (RDS) em produção | Aceito |
+| [0004](0004-api-gateway-como-ponto-de-entrada.md) | API Gateway como ponto único de entrada e autorização | Aceito |
 
 ## Template
 
