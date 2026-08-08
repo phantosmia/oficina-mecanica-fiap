@@ -97,13 +97,14 @@ A infraestrutura Terraform fica em `infra/aws` e provisiona:
 - cluster EKS
 - node group gerenciado
 - repositório ECR para a imagem da API
-- banco PostgreSQL em Amazon RDS
 - IAM/IRSA para o AWS Load Balancer Controller
 - AWS Secrets Manager + External Secrets Operator para informações sensíveis da API
 - metrics-server para o HPA coletar CPU/memória no EKS
 - role OIDC para o GitHub Actions publicar imagens no ECR
 
-O backend remoto do Terraform fica em `infra/backend` e cria S3 para state e DynamoDB para lock.
+O banco PostgreSQL em Amazon RDS **não** é provisionado aqui: é responsabilidade do repositório separado [`oficina-mecanica-infra-banco-dados`](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) (Terraform próprio, com sua própria VPC), conforme a separação de repositórios exigida pela Fase 3 do Tech Challenge. Este repositório consome o endpoint e as credenciais do RDS via as variables/secrets `RDS_ENDPOINT`, `RDS_SECRET_ARN` e `POSTGRES_PASSWORD` (ver tabela em [testes-carga-ci.md](testes-carga-ci.md)).
+
+O backend remoto do Terraform fica em `infra/backend` e cria S3 para state e DynamoDB para lock — o repositório `oficina-mecanica-infra-banco-dados` reaproveita o mesmo bucket/tabela, só com uma `key` de state diferente.
 
 ## Fluxo Terraform sugerido
 
@@ -184,4 +185,4 @@ kubectl delete -k k8s/overlays/aws
 
 Os valores em `k8s/base/secret.yaml` são defaults do ambiente local. Em ambientes reais, substitua esses valores por segredos gerenciados pelo cluster, External Secrets ou AWS Secrets Manager antes de aplicar os manifests.
 
-No overlay local, o PostgreSQL roda no cluster via `StatefulSet`. No overlay AWS, o PostgreSQL interno é removido e a API aponta para o Amazon RDS criado pelo Terraform.
+No overlay local, o PostgreSQL roda no cluster via `StatefulSet`. No overlay AWS, o PostgreSQL interno é removido e a API aponta para o Amazon RDS criado pelo Terraform do repositório `oficina-mecanica-infra-banco-dados`.

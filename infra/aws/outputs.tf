@@ -48,31 +48,6 @@ output "ecr_login_command" {
   value       = "aws ecr get-login-password --region ${var.aws_region} | docker login --username AWS --password-stdin ${split("/", aws_ecr_repository.api.repository_url)[0]}"
 }
 
-output "rds_endpoint" {
-  description = "Endpoint DNS do RDS PostgreSQL."
-  value       = aws_db_instance.postgres.address
-}
-
-output "rds_port" {
-  description = "Porta do RDS PostgreSQL."
-  value       = aws_db_instance.postgres.port
-}
-
-output "rds_database_name" {
-  description = "Nome do database PostgreSQL no RDS."
-  value       = aws_db_instance.postgres.db_name
-}
-
-output "rds_username" {
-  description = "Usuário PostgreSQL no RDS."
-  value       = aws_db_instance.postgres.username
-}
-
-output "rds_secret_arn" {
-  description = "ARN do secret do Secrets Manager com as credenciais do RDS."
-  value       = aws_secretsmanager_secret.rds.arn
-}
-
 output "app_secret_arn" {
   description = "ARN do secret do Secrets Manager com credenciais sensíveis da API."
   value       = aws_secretsmanager_secret.app.arn

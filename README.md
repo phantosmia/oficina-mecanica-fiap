@@ -21,7 +21,7 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (componentes C4, infraestrutura AWS e fluxo de deploy) |
 | [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS, status, cálculo de orçamento e baixa de estoque |
 | [Execução local](docs/execucao-local.md) | Mise, Poetry, Docker Compose, migrations e dados de exemplo |
-| [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR, RDS e Secrets Manager |
+| [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR e Secrets Manager |
 | [API e autenticação](docs/api.md) | JWT, endpoints públicos, endpoints administrativos e notas de uso |
 | [Notificações por e-mail](docs/email.md) | SMTP, provedores compatíveis e configuração de envio |
 | [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, Locust, HPA e GitHub Actions |
@@ -30,6 +30,16 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | [ADRs](docs/adrs/README.md) | Decisões arquiteturais permanentes: padrão de comunicação, HPA e banco gerenciado |
 | [Terraform AWS](infra/aws/README.md) | Stack AWS principal |
 | [Terraform backend](infra/backend/README.md) | Backend remoto em S3 com lock em DynamoDB |
+
+## Repositórios da Fase 3
+
+A Fase 3 do Tech Challenge exige 4 repositórios separados, cada um com CI/CD e regras de proteção próprias. Este repositório é a **aplicação principal**; os outros três são:
+
+| Repositório | Papel | Status |
+|---|---|---|
+| [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Infraestrutura do Banco de Dados Gerenciado (Terraform, RDS PostgreSQL) | Implementado |
+| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Infraestrutura Kubernetes (Terraform, EKS) | Placeholder |
+| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Function Serverless de autenticação via CPF | Placeholder |
 
 ## Visão geral
 
