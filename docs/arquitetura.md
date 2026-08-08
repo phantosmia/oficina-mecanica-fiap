@@ -127,42 +127,42 @@ O diagrama abaixo detalha o fluxo executado pelo workflow `deploy-aws.yml` (GitH
 ```mermaid
 flowchart TB
     Start([workflow_dispatch]) --> Auth{deployment_mode}
-    Auth -->|aws| OIDC[Autentica via GitHub OIDC<br/>assume role AWS]
-    Auth -->|aws-academy| Keys[Autentica via chaves de sessao<br/>AWS Academy]
+    Auth -->|aws| OIDC["Autentica via GitHub OIDC<br/>assume role AWS"]
+    Auth -->|aws-academy| Keys["Autentica via chaves<br/>de sessão AWS Academy"]
 
-    OIDC --> Setup{{Setup Terraform + kubectl}}
+    OIDC --> Setup{{"Setup Terraform<br/>+ kubectl"}}
     Keys --> Setup
 
-    Setup --> Backend{{Preparar backend remoto<br/>backend.hcl}}
-    Backend --> Tfvars{{Gerar tfvars sensiveis<br/>secrets e variables}}
-    Tfvars --> Init[terraform init]
-    Init --> Plan[terraform plan<br/>le kubernetes + database via<br/>terraform_remote_state]
+    Setup --> Backend{{"Preparar backend<br/>remoto (backend.hcl)"}}
+    Backend --> Tfvars{{"Gerar tfvars<br/>sensíveis"}}
+    Tfvars --> Init["terraform init"]
+    Init --> Plan["terraform plan<br/>(lê kubernetes + database<br/>via terraform_remote_state)"]
 
-    Plan --> RemoteStateCheck{state remoto dos outros<br/>dois repositorios existe<br/>no ambiente lido?}
-    RemoteStateCheck -->|nao| Fail(["Falha imediata:<br/>Unable to find remote state<br/>aplique kubernetes/database primeiro"])
-    RemoteStateCheck -->|sim| ApplyCheck{terraform_apply?}
-    ApplyCheck -->|true| Apply[terraform apply<br/>-auto-approve]
-    ApplyCheck -->|false| Outputs[Ler outputs do Terraform]
+    Plan --> RemoteStateCheck{"State remoto dos outros<br/>repos existe no ambiente?"}
+    RemoteStateCheck -->|não| Fail(["Falha imediata:<br/>remote state ausente"])
+    RemoteStateCheck -->|sim| ApplyCheck{"terraform_apply?"}
+    ApplyCheck -->|true| Apply["terraform apply<br/>-auto-approve"]
+    ApplyCheck -->|false| Outputs["Ler outputs<br/>do Terraform"]
     Apply --> Outputs
 
-    Outputs --> BuildCheck{build_image?}
-    BuildCheck -->|true| Build[Login ECR +<br/>docker build e push]
-    BuildCheck -->|false| Kube[Configurar kubeconfig do EKS]
+    Outputs --> BuildCheck{"build_image?"}
+    BuildCheck -->|true| Build["Login ECR +<br/>docker build/push"]
+    BuildCheck -->|false| Kube["Configurar kubeconfig<br/>do EKS"]
     Build --> Kube
 
-    Kube --> Overlay{{Preparar overlay<br/>Kustomize por modo}}
-    Overlay --> Validate[kubectl kustomize<br/>valida manifests]
-    Validate --> ApplyK8s[kubectl apply -k<br/>recria Migration Job]
+    Kube --> Overlay{{"Preparar overlay<br/>Kustomize por modo"}}
+    Overlay --> Validate["kubectl kustomize<br/>(valida manifests)"]
+    Validate --> ApplyK8s["kubectl apply -k<br/>(recria Migration Job)"]
 
-    ApplyK8s --> WaitMig@{ shape: delay, label: "Aguardar Migration Job (condition=complete)" }
-    WaitMig --> WaitRollout@{ shape: delay, label: "Aguardar rollout do Deployment da API" }
-    WaitRollout --> Summary[Resumo do deploy]
-    Summary --> End([Deploy concluido])
+    ApplyK8s --> WaitMig[["Aguardar Migration Job<br/>(condition=complete)"]]
+    WaitMig --> WaitRollout[["Aguardar rollout do<br/>Deployment da API"]]
+    WaitRollout --> Summary["Resumo do deploy"]
+    Summary --> End([Deploy concluído])
 ```
 
 ### Leitura do fluxo de deploy
 
-- **Formas do diagrama**: retângulos são passos de execução; hexágonos são passos de preparação; losangos são decisões condicionais; e as formas em D (delay) representam os passos de **aguardar execução** (Migration Job e rollout).
+- **Formas do diagrama**: retângulos são passos de execução; hexágonos são passos de preparação; losangos são decisões condicionais; e os retângulos de borda dupla representam os passos de **aguardar execução** (Migration Job e rollout). O texto completo de cada condição está detalhado nos tópicos abaixo, para manter os nós do diagrama curtos e legíveis em qualquer visualizador de Markdown.
 - **Autenticação**: no modo `aws` a pipeline assume uma role via GitHub OIDC; no modo `aws-academy` usa chaves de sessão temporárias.
 - **Terraform**: sempre roda `init` e `plan` (só o Terraform de `infra/aws`: secret da API + IRSA); o `apply` só ocorre quando o input `terraform_apply=true`. Já durante o `plan`, o Terraform lê automaticamente `cluster_name`, `ecr_repository_url`, `oidc_provider_arn`, `rds_endpoint` e `rds_password` via `terraform_remote_state` dos outros dois repositórios; os outputs resultantes (`app_secret_name`, `api_secrets_role_arn`, `cluster_name`, `ecr_repository_url`, `rds_endpoint`) alimentam os passos seguintes — não há mais variables do GitHub para esses valores.
 - **Dependência entre repositórios**: se o `oficina-mecanica-infra-kubernetes` e o `oficina-mecanica-infra-banco-dados` ainda não tiverem sido aplicados no ambiente apontado pelo input `infra_environment` (default `dev`), o `terraform plan` deste passo falha imediatamente (`Unable to find remote state`) — ver o [diagrama de dependência entre os repositórios](#diagrama-de-dependência-entre-os-repositórios-terraform) acima. Rodar este workflow antes deles é o erro mais comum de "executei fora de ordem".
