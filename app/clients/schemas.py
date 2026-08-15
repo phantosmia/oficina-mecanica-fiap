@@ -3,6 +3,7 @@ from datetime import datetime
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator
 
 from app.shared.validators import detect_document_type, validate_document
+from app.clients.domain.value_objects import ClientStatus
 
 
 class ClientBase(BaseModel):
@@ -25,11 +26,13 @@ class ClientUpdate(BaseModel):
     name: str | None = None
     email: EmailStr | None = None
     phone: str | None = None
+    status: ClientStatus | None = None
 
 
 class ClientRead(ClientBase):
     id: int
     document_type: str
+    status: str
     created_at: datetime
     updated_at: datetime | None = None
 

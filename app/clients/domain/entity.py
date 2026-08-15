@@ -12,3 +12,4 @@ class ClientEntity:
     phone: str | None
     created_at: datetime
     updated_at: datetime | None = None
+    status: str = "ativo"

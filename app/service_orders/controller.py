@@ -1,8 +1,8 @@
-from fastapi import APIRouter, Depends, status
+from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from app.shared.database import get_db
-from app.shared.dependencies import get_current_admin
+from app.shared.dependencies import get_current_admin, get_current_client
 from app.shared.email import IEmailNotifier
 from app.shared.http_errors import domain_error_handler
 from app.shared.smtp_notifier import SmtpEmailNotifier
@@ -162,8 +162,21 @@ def deliver_service_order(order_id: int, repo: IServiceOrderRepository = Depends
 @router.get("/{order_id}/tracking", response_model=ServiceOrderTracking)
 def track_order(
     order_id: int,
-    document_number: str,
+    document_number: str | None = None,
+    client: dict[str, str] | None = Depends(get_current_client),
     repo: IServiceOrderRepository = Depends(_get_repo),
 ) -> ServiceOrderTracking:
+    # Aceita duas credenciais equivalentes (RFC-0003 + ADR-0004): o JWT de
+    # cliente emitido pela Lambda de autenticação via CPF, se enviado via
+    # `Authorization: Bearer`, tem prioridade sobre o `document_number` da
+    # query — mantendo o mecanismo público original funcionando sem quebra
+    # para quem ainda não migrou para o token.
+    resolved_document = client["document_number"] if client is not None else document_number
+    if not resolved_document:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Informe document_number ou um token Bearer válido (emitido pela Lambda de autenticação via CPF).",
+        )
+
     with domain_error_handler():
-        return to_tracking(GetTrackingUseCase(repo).execute(order_id, validate_document(document_number)))
+        return to_tracking(GetTrackingUseCase(repo).execute(order_id, validate_document(resolved_document)))

@@ -21,6 +21,12 @@
 7. Aprovação e baixa de estoque.
 8. Finalização e entrega.
 
+## Status do cliente
+
+Todo cliente tem um `status`: `ativo` (padrão na criação) ou `inativo`. Um admin altera o status via `PUT /clients/{client_id}`; não há regra de transição (diferente do status da OS) — um cliente inativo pode ser reativado livremente.
+
+A Lambda de autenticação via CPF (repositório [`oficina-mecanica-lambda-auth`](https://github.com/phantosmia/oficina-mecanica-lambda-auth), RFC-0004/ADR-0004) recusa a emissão de JWT para um cliente com `status = inativo`, tratando esse caso como equivalente a "cliente inexistente" (mesma resposta HTTP) — evita confirmar a um solicitante não autenticado se um CPF pertence a um cliente inativo ou simplesmente não existe. Fora desse ponto de entrada, hoje o status **não é** verificado em nenhum outro fluxo (ex.: criação de OS para um cliente inativo continua permitida) — é informativo por enquanto.
+
 ## Cálculo da Ordem de Serviço
 
 Quando uma OS é criada, o orçamento é calculado automaticamente com base nos serviços e peças inclusos.
