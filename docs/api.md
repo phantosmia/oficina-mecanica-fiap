@@ -31,7 +31,7 @@ A documentação interativa está disponível em:
 
 ### Ordens de Serviço
 
-- `GET /service-orders/{order_id}/tracking?document_number={cpf_ou_cnpj}`: consulta pública do andamento de uma OS pelo cliente
+- `GET /service-orders/{order_id}/tracking?document_number={cpf_ou_cnpj}`: consulta pública do andamento de uma OS pelo cliente. Aceita, alternativamente, um header `Authorization: Bearer {token}` com o JWT de cliente emitido pela Lambda de autenticação via CPF (repositório [`oficina-mecanica-lambda-auth`](https://github.com/phantosmia/oficina-mecanica-lambda-auth), ver RFC-0004/ADR-0004) — quando presente, o token tem prioridade sobre `document_number` e dispensa informá-lo. As duas formas coexistem: nenhuma delas foi removida.
 - `POST /service-orders/{order_id}/quote-response`: aprova ou recusa orçamento com token público enviado por e-mail
 
 Payload para resposta de orçamento:
@@ -54,7 +54,7 @@ Todos os endpoints abaixo requerem token JWT. Para obter o token, use `POST /aut
 - `GET /clients`: lista todos os clientes
 - `POST /clients`: cria novo cliente (`name`, `document_number`, `email*`, `phone*`)
 - `GET /clients/{client_id}`: obtém detalhes de um cliente
-- `PUT /clients/{client_id}`: atualiza dados de um cliente (`name*`, `email*`, `phone*`)
+- `PUT /clients/{client_id}`: atualiza dados de um cliente (`name*`, `email*`, `phone*`, `status*` — `ativo` ou `inativo`)
 - `DELETE /clients/{client_id}`: deleta um cliente
 
 ### Veículos

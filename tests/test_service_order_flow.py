@@ -1,13 +1,31 @@
+from datetime import UTC, datetime, timedelta
+
 from fastapi.testclient import TestClient
+from jose import jwt
 from sqlalchemy import select
 
 from app.shared.database import get_session
 from app.shared.models import ServiceOrder
+from app.shared.settings import settings
 
 
 def _get_quote_token(order_id: int) -> str | None:
     with get_session() as session:
         return session.scalar(select(ServiceOrder.quote_token).where(ServiceOrder.id == order_id))
+
+
+def _client_jwt(document_number: str) -> str:
+    """Monta um token no mesmo formato emitido pela Lambda de autenticação via
+    CPF (repositório `oficina-mecanica-lambda-auth`, ver ADR-0004/ADR-0005) —
+    usado aqui só para testar o lado consumidor (`get_current_client`), sem
+    depender daquele repositório."""
+    payload = {
+        "sub": document_number,
+        "type": "client",
+        "client_id": 1,
+        "exp": datetime.now(UTC) + timedelta(minutes=30),
+    }
+    return jwt.encode(payload, settings.jwt_secret_key, algorithm=settings.jwt_algorithm)
 
 
 def test_admin_routes_require_authentication(client: TestClient) -> None:
@@ -114,6 +132,28 @@ def test_full_service_order_flow(client: TestClient, admin_headers: dict[str, st
     )
     assert tracking_response.status_code == 200
     assert tracking_response.json()["status"] == "entregue"
+
+    # Mesma consulta, agora autenticada pelo JWT de cliente (emitido pela
+    # Lambda de autenticação via CPF) em vez do document_number na query —
+    # os dois mecanismos coexistem (RFC-0003 + ADR-0004).
+    tracking_by_token_response = client.get(
+        f"/service-orders/{order_id}/tracking",
+        headers={"Authorization": f"Bearer {_client_jwt('52998224725')}"},
+    )
+    assert tracking_by_token_response.status_code == 200
+    assert tracking_by_token_response.json()["status"] == "entregue"
+
+    # Um token de admin (sem a claim "type": "client") não serve para acessar
+    # o tracking — get_current_client o rejeita.
+    tracking_with_admin_token_response = client.get(
+        f"/service-orders/{order_id}/tracking",
+        headers=admin_headers,
+    )
+    assert tracking_with_admin_token_response.status_code == 401
+
+    # Sem document_number e sem token: nenhuma credencial para identificar o cliente.
+    tracking_without_credentials_response = client.get(f"/service-orders/{order_id}/tracking")
+    assert tracking_without_credentials_response.status_code == 422
 
     part_detail = client.get(f"/parts/{part_id}", headers=admin_headers)
     assert part_detail.status_code == 200
@@ -289,6 +329,7 @@ def test_client_and_vehicle_crud(client: TestClient, admin_headers: dict[str, st
     )
     assert client_response.status_code == 201
     created_client = client_response.json()
+    assert created_client["status"] == "ativo"
 
     vehicle_response = client.post(
         "/vehicles",
@@ -323,6 +364,29 @@ def test_client_and_vehicle_crud(client: TestClient, admin_headers: dict[str, st
     )
     assert client_update_response.status_code == 200
     assert client_update_response.json()["phone"] == "+551144444444"
+
+    client_deactivate_response = client.put(
+        f"/clients/{created_client['id']}",
+        json={"status": "inativo"},
+        headers=admin_headers,
+    )
+    assert client_deactivate_response.status_code == 200
+    assert client_deactivate_response.json()["status"] == "inativo"
+
+    client_reactivate_response = client.put(
+        f"/clients/{created_client['id']}",
+        json={"status": "ativo"},
+        headers=admin_headers,
+    )
+    assert client_reactivate_response.status_code == 200
+    assert client_reactivate_response.json()["status"] == "ativo"
+
+    invalid_status_response = client.put(
+        f"/clients/{created_client['id']}",
+        json={"status": "banido"},
+        headers=admin_headers,
+    )
+    assert invalid_status_response.status_code == 422
 
     vehicle_detail_response = client.get(f"/vehicles/{vehicle_id}", headers=admin_headers)
     assert vehicle_detail_response.status_code == 200

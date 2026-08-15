@@ -22,6 +22,7 @@ class Client(Base, TimestampMixin):
     document_number: Mapped[str | None] = mapped_column(String, unique=True, nullable=True)
     email: Mapped[str | None] = mapped_column(String, nullable=True)
     phone: Mapped[str | None] = mapped_column(String, nullable=True)
+    status: Mapped[str] = mapped_column(String, nullable=False, server_default="ativo")
 
     vehicles: Mapped[list["Vehicle"]] = relationship(back_populates="client", cascade="all, delete-orphan")
     service_orders: Mapped[list["ServiceOrder"]] = relationship(back_populates="client", cascade="all, delete-orphan")

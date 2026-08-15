@@ -18,6 +18,7 @@ def _to_entity(orm: ClientORM) -> ClientEntity:
         phone=orm.phone,
         created_at=orm.created_at,
         updated_at=orm.updated_at,
+        status=orm.status,
     )
 
 
