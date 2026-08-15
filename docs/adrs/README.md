@@ -12,6 +12,7 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 | [0002](0002-uso-de-hpa-para-escalabilidade.md) | Uso de HPA para escalabilidade automática | Aceito |
 | [0003](0003-postgresql-gerenciado-rds.md) | PostgreSQL gerenciado (RDS) em produção | Aceito |
 | [0004](0004-api-gateway-como-ponto-de-entrada.md) | API Gateway como ponto único de entrada e autorização | Aceito |
+| [0005](0005-lambda-auth-na-vpc-do-banco.md) | Lambda de autenticação implantada na VPC do banco de dados | Aceito |
 
 ## Template
 

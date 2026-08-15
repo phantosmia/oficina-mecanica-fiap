@@ -98,20 +98,23 @@ O diagrama abaixo representa os principais recursos provisionados pelo Terraform
 
 ## Diagrama de dependência entre os repositórios Terraform
 
-A leitura via `terraform_remote_state` (ver seção anterior) cria uma **ordem de apply obrigatória** entre os três repositórios: cada seta abaixo é uma leitura de state, não uma chamada de API — se o state do lado de origem da seta ainda não existir no ambiente (`dev`, `homologacao` ou `producao`) sendo lido, o `plan`/`apply` do lado de destino falha.
+A leitura via `terraform_remote_state` (ver seção anterior) cria uma **ordem de apply obrigatória** entre os quatro repositórios: cada seta abaixo é uma leitura de state, não uma chamada de API — se o state do lado de origem da seta ainda não existir no ambiente (`dev`, `homologacao` ou `producao`) sendo lido, o `plan`/`apply` do lado de destino falha.
 
 ```mermaid
 flowchart LR
     DB["oficina-mecanica-infra-banco-dados<br/><small>database/&lt;env&gt;/terraform.tfstate</small>"]
     K8S["oficina-mecanica-infra-kubernetes<br/><small>kubernetes/&lt;env&gt;/terraform.tfstate</small>"]
     APP["oficina-mecanica-fiap: infra/aws<br/><small>aws/&lt;env&gt;/terraform.tfstate</small>"]
+    LAMBDA["oficina-mecanica-lambda-auth<br/><small>lambda/&lt;env&gt;/terraform.tfstate</small>"]
 
     DB -- "rds_secret_arn" --> K8S
     DB -- "rds_endpoint, rds_password" --> APP
     K8S -- "cluster_name, ecr_repository_url,<br/>oidc_provider_arn" --> APP
+    DB -- "vpc_id, private_subnet_ids,<br/>rds_secret_arn" --> LAMBDA
+    APP -- "app_secret_arn<br/>(JWT_SECRET_KEY)" --> LAMBDA
 ```
 
-Ordem de apply, portanto: **banco de dados → cluster Kubernetes → aplicação principal**. Isso vale tanto para uma aplicação manual local quanto para os workflows de CI/CD de cada repositório — nenhum deles provisiona os outros automaticamente, então rodar o `terraform apply` do repositório errado primeiro (ou apontar `kubernetes_state_key`/`database_state_key`/`infra_environment` para um ambiente que nunca foi aplicado) leva a essa falha.
+Ordem de apply, portanto: **banco de dados → cluster Kubernetes → aplicação principal → Lambda de autenticação**. Isso vale tanto para uma aplicação manual local quanto para os workflows de CI/CD de cada repositório — nenhum deles provisiona os outros automaticamente, então rodar o `terraform apply` do repositório errado primeiro (ou apontar `kubernetes_state_key`/`database_state_key`/`app_state_key`/`infra_environment` para um ambiente que nunca foi aplicado) leva a essa falha. A Lambda depende da aplicação principal (não do cluster Kubernetes diretamente) porque lê o `JWT_SECRET_KEY` do secret que `infra/aws` cria — ver [ADR-0005](adrs/0005-lambda-auth-na-vpc-do-banco.md).
 
 > **O que acontece se você rodar fora de ordem:** o `terraform plan` (ou `apply`) do repositório que lê o state ausente falha imediatamente, com:
 > ```
