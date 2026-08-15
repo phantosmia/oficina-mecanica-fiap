@@ -6,7 +6,7 @@ Os manifests Kubernetes estão organizados em base e overlays:
 
 - `k8s/base`: recursos comuns da aplicação
 - `k8s/overlays/local`: exposição da API via `NodePort`, útil para Minikube
-- `k8s/overlays/aws`: exposição da API via `Ingress` com AWS Load Balancer Controller
+- `k8s/overlays/aws`: exposição da API via `Ingress` com AWS Load Balancer Controller. O ALB é **interno** (não internet-facing) — o único caminho de entrada público é o AWS API Gateway do repositório `oficina-mecanica-lambda-auth`, via VPC Link (ver [ADR-0006](adrs/0006-alb-interno-vpc-link.md))
 - `k8s/overlays/aws-academy`: modo compatível com AWS Academy Lab, usando `Service` `LoadBalancer`
 
 A stack Kubernetes contém:

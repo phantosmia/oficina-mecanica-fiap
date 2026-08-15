@@ -4,7 +4,12 @@ metadata:
   name: oficina-mecanica-api
   namespace: oficina-mecanica
   annotations:
-    alb.ingress.kubernetes.io/scheme: internet-facing
+    # internal (não internet-facing): o ALB só é alcançável de dentro da VPC
+    # do EKS — o único caminho de entrada público passa a ser o AWS API
+    # Gateway do repositório oficina-mecanica-lambda-auth, via VPC Link
+    # (ver ADR-0006). Sem isso, qualquer rota "protegida" pelo Lambda
+    # Authorizer podia ser contornada batendo direto no ALB.
+    alb.ingress.kubernetes.io/scheme: internal
     alb.ingress.kubernetes.io/target-type: ip
     alb.ingress.kubernetes.io/listen-ports: '[{"HTTP": 80}]'
     alb.ingress.kubernetes.io/healthcheck-path: /health
