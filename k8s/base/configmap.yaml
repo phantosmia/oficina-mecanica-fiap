@@ -18,3 +18,7 @@ data:
   SMTP_PORT: "587"
   SMTP_FROM: ""
   SMTP_USERNAME: ""
+  # ADR-0007: nome com que a aplicação aparece no APM do New Relic. Não é
+  # segredo — só ativa de fato quando NEW_RELIC_LICENSE_KEY (secret) também
+  # estiver definida (ver docker-entrypoint.sh).
+  NEW_RELIC_APP_NAME: oficina-mecanica-api

@@ -180,6 +180,7 @@ jobs:
           ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
           JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
           SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
+          NEW_RELIC_LICENSE_KEY_SECRET: ${{ secrets.NEW_RELIC_LICENSE_KEY }}
           TF_BACKEND_BUCKET: ${{ env.TF_BACKEND_BUCKET }}
           TF_BACKEND_REGION: ${{ env.TF_BACKEND_REGION }}
         run: |
@@ -194,6 +195,8 @@ jobs:
               values["jwt_secret_key"] = os.environ["JWT_SECRET_KEY_SECRET"]
           if os.environ.get("SMTP_PASSWORD_SECRET"):
               values["smtp_password"] = os.environ["SMTP_PASSWORD_SECRET"]
+          if os.environ.get("NEW_RELIC_LICENSE_KEY_SECRET"):
+              values["new_relic_license_key"] = os.environ["NEW_RELIC_LICENSE_KEY_SECRET"]
 
           # cluster_name, ecr_repository_url, oidc_provider_arn (do repositorio
           # oficina-mecanica-infra-kubernetes) e rds_endpoint/rds_password (do
@@ -355,6 +358,7 @@ jobs:
             --from-literal=JWT_SECRET_KEY="$(jq -r .JWT_SECRET_KEY "${RUNNER_TEMP}/oficina-app-secret.json")" \
             --from-literal=POSTGRES_PASSWORD="$(jq -r .POSTGRES_PASSWORD "${RUNNER_TEMP}/oficina-app-secret.json")" \
             --from-literal=SMTP_PASSWORD="$(jq -r .SMTP_PASSWORD "${RUNNER_TEMP}/oficina-app-secret.json")" \
+            --from-literal=NEW_RELIC_LICENSE_KEY="$(jq -r '.NEW_RELIC_LICENSE_KEY // ""' "${RUNNER_TEMP}/oficina-app-secret.json")" \
             --dry-run=client \
             -o yaml | kubectl apply -f -
 

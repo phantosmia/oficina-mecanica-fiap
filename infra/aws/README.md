@@ -122,7 +122,7 @@ Configure no GitHub:
 
 - secret `AWS_DEPLOY_ROLE_TO_ASSUME`: role OIDC com permissões para Terraform (Secrets Manager/IAM), leitura do backend S3 dos outros dois repositórios e para o EKS. Se não existir, o workflow usa `AWS_ROLE_TO_ASSUME`.
 - secret `TF_BACKEND_CONFIG`: conteúdo completo do `backend.hcl`. Alternativamente, configure as variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_STATE_REGION` e `TF_LOCK_TABLE`.
-- secrets `ADMIN_PASSWORD`, `JWT_SECRET_KEY` e `SMTP_PASSWORD`: valores gravados em `terraform.auto.tfvars.json` durante o workflow quando estiverem configurados.
+- secrets `ADMIN_PASSWORD`, `JWT_SECRET_KEY`, `SMTP_PASSWORD` e `NEW_RELIC_LICENSE_KEY` (ADR-0007): valores gravados em `terraform.auto.tfvars.json` durante o workflow quando estiverem configurados. `NEW_RELIC_LICENSE_KEY` vazia desabilita o agente APM sem quebrar a aplicação.
 - variable `AWS_REGION`: região do EKS/ECR.
 - variable `PUBLIC_BASE_URL`: URL pública da API usada nos e-mails, caso o input `public_base_url` não seja informado.
 
