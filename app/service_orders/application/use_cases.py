@@ -11,6 +11,7 @@ from app.shared.email import (
 )
 from app.shared.exceptions import InsufficientStockError, NotFoundError, PermissionDeniedError
 from app.shared.settings import settings
+from app.shared.telemetry import record_service_order_created, record_service_order_status_changed
 from app.shared.validators import detect_document_type
 from app.service_orders.domain.entities import (
     AverageExecutionTimeData,
@@ -20,6 +21,25 @@ from app.service_orders.domain.entities import (
 )
 from app.service_orders.domain.repository import IServiceOrderRepository
 from app.service_orders.domain.value_objects import ServiceOrderStatus, ensure_transition
+
+
+def _as_utc(value: datetime) -> datetime:
+    return value if value.tzinfo is not None else value.replace(tzinfo=UTC)
+
+
+def _seconds_since(reference: datetime | None, until: datetime | None) -> float | None:
+    """until - reference, em segundos, tolerando timestamps sem timezone.
+
+    As colunas *_at usam `DateTime` sem timezone (ver TimestampMixin em
+    app/shared/models.py) e voltam do banco como datetime "naive" — mas
+    sempre gravadas via datetime.now(UTC), então tratamos naive como UTC.
+    Sem isso, a subtração levanta TypeError (can't subtract offset-naive
+    and offset-aware datetimes) sempre que um dos dois lados vier do banco
+    e o outro for um datetime.now(UTC) recém-criado (ou vice-versa).
+    """
+    if reference is None or until is None:
+        return None
+    return (_as_utc(until) - _as_utc(reference)).total_seconds()
 
 
 class ListServiceOrdersUseCase:
@@ -107,7 +127,7 @@ class CreateServiceOrderUseCase:
         labor_total = sum(i.subtotal for i in service_items)
         parts_total = sum(i.subtotal for i in part_items)
 
-        return self._repo.create_order(
+        order = self._repo.create_order(
             client_id=client.id,
             vehicle_id=vehicle.id,
             problem_description=problem_description,
@@ -117,6 +137,8 @@ class CreateServiceOrderUseCase:
             parts_total=parts_total,
             quote_total=labor_total + parts_total,
         )
+        record_service_order_created(order_id=order.id, client_id=client.id, quote_total=order.quote_total)
+        return order
 
 
 class StartDiagnosisUseCase:
@@ -127,6 +149,7 @@ class StartDiagnosisUseCase:
         order = self._repo.get_order(order_id)
         if order is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        previous_status = order.status
         ensure_transition(ServiceOrderStatus(order.status), ServiceOrderStatus.IN_DIAGNOSIS)
         result = self._repo.update_order_fields(
             order_id,
@@ -138,6 +161,11 @@ class StartDiagnosisUseCase:
         )
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        record_service_order_status_changed(
+            order_id=order_id,
+            from_status=previous_status,
+            to_status=ServiceOrderStatus.IN_DIAGNOSIS.value,
+        )
         return result
 
 
@@ -150,18 +178,35 @@ class SendQuoteUseCase:
         order = self._repo.get_order(order_id)
         if order is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        previous_status = order.status
         ensure_transition(ServiceOrderStatus(order.status), ServiceOrderStatus.WAITING_APPROVAL)
+        now = datetime.now(UTC)
+        # Se veio de IN_DIAGNOSIS, order.updated_at ainda guarda o instante em que
+        # StartDiagnosisUseCase marcou a entrada nesse status (nada mais o
+        # sobrescreveu desde então) — dá pra calcular quanto tempo a OS passou
+        # em diagnóstico sem precisar de uma coluna dedicada pra isso.
+        diagnosis_seconds = (
+            _seconds_since(order.updated_at, now)
+            if previous_status == ServiceOrderStatus.IN_DIAGNOSIS.value
+            else None
+        )
         fields: dict[str, object] = {
             "status": ServiceOrderStatus.WAITING_APPROVAL.value,
             "quote_token": token_urlsafe(32),
-            "quote_sent_at": datetime.now(UTC),
-            "updated_at": datetime.now(UTC),
+            "quote_sent_at": now,
+            "updated_at": now,
         }
         if diagnosis_notes:
             fields["diagnosis_notes"] = diagnosis_notes
         result = self._repo.update_order_fields(order_id, fields)
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        record_service_order_status_changed(
+            order_id=order_id,
+            from_status=previous_status,
+            to_status=ServiceOrderStatus.WAITING_APPROVAL.value,
+            seconds_in_previous_status=diagnosis_seconds,
+        )
         if result.client_email:
             subject, body = quote_available_message(
                 order_id,
@@ -195,6 +240,13 @@ class ApproveOrderUseCase:
         result = self._repo.execute_approval(order_id)
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        waiting_approval_seconds = _seconds_since(order.quote_sent_at, result.approved_at)
+        record_service_order_status_changed(
+            order_id=order_id,
+            from_status=ServiceOrderStatus.WAITING_APPROVAL.value,
+            to_status=ServiceOrderStatus.IN_PROGRESS.value,
+            seconds_in_previous_status=waiting_approval_seconds,
+        )
         if result.client_email:
             subject, body = quote_approved_message(order_id)
             self._notifier.send(to=result.client_email, subject=subject, body=body)
@@ -211,16 +263,24 @@ class RejectOrderUseCase:
         if order is None:
             raise NotFoundError("Ordem de serviço", order_id)
         ensure_transition(ServiceOrderStatus(order.status), ServiceOrderStatus.REJECTED)
+        now = datetime.now(UTC)
         result = self._repo.update_order_fields(
             order_id,
             {
                 "status": ServiceOrderStatus.REJECTED.value,
                 "quote_token": None,
-                "updated_at": datetime.now(UTC),
+                "updated_at": now,
             },
         )
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        waiting_approval_seconds = _seconds_since(order.quote_sent_at, now)
+        record_service_order_status_changed(
+            order_id=order_id,
+            from_status=ServiceOrderStatus.WAITING_APPROVAL.value,
+            to_status=ServiceOrderStatus.REJECTED.value,
+            seconds_in_previous_status=waiting_approval_seconds,
+        )
         if result.client_email:
             subject, body = quote_rejected_message(order_id)
             self._notifier.send(to=result.client_email, subject=subject, body=body)
@@ -255,16 +315,28 @@ class FinishOrderUseCase:
         if order is None:
             raise NotFoundError("Ordem de serviço", order_id)
         ensure_transition(ServiceOrderStatus(order.status), ServiceOrderStatus.FINISHED)
+        now = datetime.now(UTC)
         result = self._repo.update_order_fields(
             order_id,
             {
                 "status": ServiceOrderStatus.FINISHED.value,
-                "finished_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "finished_at": now,
+                "updated_at": now,
             },
         )
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        # "Execução" no dashboard exigido — mesma janela que
+        # GetAverageExecutionTimeUseCase já calcula via SQL (started_at até
+        # finished_at), só que emitida aqui como evento no momento em que
+        # acontece, em vez de agregada sob demanda depois.
+        execution_seconds = _seconds_since(order.started_at, now)
+        record_service_order_status_changed(
+            order_id=order_id,
+            from_status=ServiceOrderStatus.IN_PROGRESS.value,
+            to_status=ServiceOrderStatus.FINISHED.value,
+            seconds_in_previous_status=execution_seconds,
+        )
         if result.client_email:
             subject, body = order_finished_message(order_id)
             self._notifier.send(to=result.client_email, subject=subject, body=body)
@@ -280,16 +352,26 @@ class DeliverOrderUseCase:
         if order is None:
             raise NotFoundError("Ordem de serviço", order_id)
         ensure_transition(ServiceOrderStatus(order.status), ServiceOrderStatus.DELIVERED)
+        now = datetime.now(UTC)
         result = self._repo.update_order_fields(
             order_id,
             {
                 "status": ServiceOrderStatus.DELIVERED.value,
-                "delivered_at": datetime.now(UTC),
-                "updated_at": datetime.now(UTC),
+                "delivered_at": now,
+                "updated_at": now,
             },
         )
         if result is None:
             raise NotFoundError("Ordem de serviço", order_id)
+        # "Finalização" no dashboard exigido: tempo entre a OS ficar pronta
+        # (finished_at) e ser de fato entregue ao cliente.
+        finalization_seconds = _seconds_since(order.finished_at, now)
+        record_service_order_status_changed(
+            order_id=order_id,
+            from_status=ServiceOrderStatus.FINISHED.value,
+            to_status=ServiceOrderStatus.DELIVERED.value,
+            seconds_in_previous_status=finalization_seconds,
+        )
         return result
 
 
