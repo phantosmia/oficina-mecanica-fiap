@@ -14,6 +14,7 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 | [0004](0004-api-gateway-como-ponto-de-entrada.md) | API Gateway como ponto único de entrada e autorização | Aceito |
 | [0005](0005-lambda-auth-na-vpc-do-banco.md) | Lambda de autenticação implantada na VPC do banco de dados | Aceito |
 | [0006](0006-alb-interno-vpc-link.md) | ALB interno + VPC Link como único ponto de entrada público | Aceito |
+| [0007](0007-new-relic-como-plataforma-de-observabilidade.md) | New Relic como plataforma de observabilidade | Aceito |
 
 ## Template
 
