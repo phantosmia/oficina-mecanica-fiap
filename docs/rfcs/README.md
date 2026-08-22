@@ -12,6 +12,7 @@ Uma RFC pode ser revisitada se o contexto mudar (por exemplo, migrar de AWS Acad
 | [0002](0002-escolha-do-banco-de-dados.md) | Escolha do banco de dados (PostgreSQL) | Aceito |
 | [0003](0003-estrategia-de-autenticacao.md) | Estratégia de autenticação | Aceito |
 | [0004](0004-escolha-do-api-gateway.md) | Escolha da solução de API Gateway | Aceito |
+| [0005](0005-escolha-da-ferramenta-de-monitoramento.md) | Escolha da ferramenta de monitoramento | Aceito |
 
 ## Template
 
