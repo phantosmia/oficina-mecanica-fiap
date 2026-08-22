@@ -67,6 +67,13 @@ variable "smtp_password" {
   default     = ""
 }
 
+variable "new_relic_license_key" {
+  description = "License key (ingest) do New Relic, usada pelo agente APM da aplicação (ADR-0007). Vazia (padrão) desabilita o agente sem quebrar a aplicação — ver docker-entrypoint.sh."
+  type        = string
+  sensitive   = true
+  default     = ""
+}
+
 variable "tags" {
   description = "Tags adicionais aplicadas aos recursos AWS."
   type        = map(string)

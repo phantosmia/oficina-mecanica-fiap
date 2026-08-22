@@ -46,6 +46,12 @@ fi
 echo "Populando banco com dados de exemplo..."
 poetry run python scripts/populate_db.py
 
-# Iniciar API
+# Iniciar API — instrumentado pelo agente APM do New Relic (ADR-0007) quando
+# NEW_RELIC_LICENSE_KEY estiver definida (configuração 100% via variável de
+# ambiente, sem newrelic.ini); sem ela, roda normalmente (uso local/dev).
 echo "Iniciando servidor da API..."
-exec poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
+if [ -n "${NEW_RELIC_LICENSE_KEY:-}" ]; then
+    exec poetry run newrelic-admin run-program uvicorn app.main:app --host 0.0.0.0 --port 8000
+else
+    exec poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
+fi

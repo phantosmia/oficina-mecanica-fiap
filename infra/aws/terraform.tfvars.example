@@ -12,6 +12,9 @@ database_state_key    = "database/dev/terraform.tfstate"
 jwt_secret_key = "change-me-in-production"
 admin_password = "Admin@123"
 smtp_password  = ""
+# License key (ingest) do New Relic — ver ADR-0007. Vazia desabilita o
+# agente APM sem quebrar a aplicação.
+new_relic_license_key = ""
 
 tags = {
   Owner      = "seu-usuario"

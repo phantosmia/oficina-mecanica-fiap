@@ -49,10 +49,11 @@ resource "aws_secretsmanager_secret_version" "app" {
   secret_id = aws_secretsmanager_secret.app.id
 
   secret_string = jsonencode({
-    ADMIN_PASSWORD    = var.admin_password
-    JWT_SECRET_KEY    = var.jwt_secret_key
-    POSTGRES_PASSWORD = data.terraform_remote_state.database.outputs.rds_password
-    SMTP_PASSWORD     = var.smtp_password
+    ADMIN_PASSWORD        = var.admin_password
+    JWT_SECRET_KEY        = var.jwt_secret_key
+    POSTGRES_PASSWORD     = data.terraform_remote_state.database.outputs.rds_password
+    SMTP_PASSWORD         = var.smtp_password
+    NEW_RELIC_LICENSE_KEY = var.new_relic_license_key
   })
 }
 
