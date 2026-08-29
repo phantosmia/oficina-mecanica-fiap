@@ -39,7 +39,7 @@ A Fase 3 do Tech Challenge exige 4 repositórios separados, cada um com CI/CD e 
 |---|---|---|
 | [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Infraestrutura do Banco de Dados Gerenciado (Terraform, RDS PostgreSQL) | Implementado |
 | [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Infraestrutura Kubernetes (Terraform, VPC, EKS, ECR, add-ons) | Implementado |
-| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Function Serverless de autenticação via CPF | Placeholder |
+| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Function Serverless de autenticação via CPF | Implementado |
 
 ## Visão geral
 
