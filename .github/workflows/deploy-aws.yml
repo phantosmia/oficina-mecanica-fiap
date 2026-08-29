@@ -246,6 +246,13 @@ jobs:
           # terraform_remote_state. Se algum dos dois nunca foi aplicado no ambiente
           # "${INFRA_ENVIRONMENT}", o plan falha com "Unable to find remote state" —
           # capturamos aqui para deixar a causa raiz e a correção explícitas no log.
+          #
+          # set -o pipefail é obrigatório aqui: o shell default do runner (bash -e,
+          # sem pipefail) só olha o exit code do último comando do pipe (tee, que
+          # é sempre 0) — sem isso, "if ! terraform plan | tee ..." nunca detecta
+          # a falha do terraform plan, e o job só falha um passo depois (no
+          # apply, com "Cannot apply incomplete plan"), sem a mensagem amigável.
+          set -o pipefail
           if ! terraform plan -out=tfplan 2>&1 | tee /tmp/tf-plan.log; then
             if grep -q "Unable to find remote state" /tmp/tf-plan.log; then
               echo "::error::terraform plan falhou ao ler o state remoto de outro repositório. Aplique primeiro, no ambiente '${INFRA_ENVIRONMENT}': (1) oficina-mecanica-infra-banco-dados e (2) oficina-mecanica-infra-kubernetes — nessa ordem — antes de rodar este workflow. Veja docs/arquitetura.md#diagrama-de-dependência-entre-os-repositórios-terraform."
