@@ -57,6 +57,7 @@ Esta versão atende os principais requisitos do desafio:
 - migrations Alembic para versionamento do banco
 - testes automatizados com Testcontainers e cobertura mínima
 - Docker Compose, Kubernetes, HPA, Locust, Terraform AWS/EKS e CI/CD
+- logs estruturados em JSON, correlacionados por requisição (`X-Request-ID`) e por trace/span da APM (New Relic)
 - diagramas de arquitetura (componentes C4, infraestrutura AWS e fluxo de deploy) em [docs/arquitetura.md](docs/arquitetura.md)
 
 ## Stack
