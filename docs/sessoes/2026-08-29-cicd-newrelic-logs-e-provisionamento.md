@@ -29,11 +29,13 @@ Ordem de apply usada (a mesma documentada em `docs/arquitetura.md`): **banco →
 
 Credenciais AWS Academy Lab (`.aws_credentials`, gitignorado, na raiz de `oficina-mecanica-fiap`) foram atualizadas nos GitHub Environments `aws`, `homologacao` e `producao` do repo `oficina-mecanica-fiap`. **Essas credenciais expiram em poucas horas** (sessão do Lab) — se a próxima sessão precisar aplicar/destruir algo, provavelmente vai precisar de credenciais novas.
 
-### Como foi aplicado
+### Como foi aplicado (⚠️ desvio de convenção, não repetir)
 
-Por velocidade, a maior parte foi aplicada **localmente** (não via GitHub Actions) usando `git worktree` temporários em `/tmp/infra-{db,k8s,lambda}-{dev,homologacao,producao}` — **esses diretórios não persistem** entre sessões (estão em `/tmp`, fora do repositório). Se a próxima sessão precisar reaplicar/ajustar algo nesses ambientes, precisa recriar os worktrees (backend.hcl + terraform.tfvars, ver os `*.example` de cada repositório) — os valores usados estão documentados nesta sessão (bucket `oficina-mecanica-fiap-tfstate-752800996420-us-east-1`, tabela `oficina-mecanica-fiap-terraform-locks`, roles `LabRole`/`voclabs`/`LabEksClusterRole`/`LabEksNodeRole` da conta `752800996420`).
+Por velocidade, a maior parte (banco de dados, cluster, Lambda) foi aplicada **localmente** (não via GitHub Actions) usando `git worktree` temporários em `/tmp/infra-{db,k8s,lambda}-{dev,homologacao,producao}` — **esses diretórios não persistem** entre sessões (estão em `/tmp`, fora do repositório).
 
-Só o app (`oficina-mecanica-fiap`) foi de fato deployado **via GitHub Actions** (`gh run rerun`), já que é o fluxo automático que devia ser validado.
+**Isso contraria a convenção do projeto** (agora explícita no `CLAUDE.md`: provisionamento é sempre via GitHub Actions, nunca Terraform local) e não deveria ter sido feito assim — foi uma escolha de velocidade sob pressão de tempo desta sessão, não um padrão a repetir. A consequência prática: os 3 repositórios de infra (`infra-banco-dados`, `infra-kubernetes`, `lambda-auth`) têm recursos reais na AWS que **não têm run de GitHub Actions correspondente** — o histórico de Actions desses repositórios não reflete o estado real da infraestrutura. Se a próxima sessão for mexer nesses ambientes, o caminho correto é configurar os secrets/variables do GitHub Environment de cada repositório (mesmos valores usados aqui: bucket `oficina-mecanica-fiap-tfstate-752800996420-us-east-1` — mas a conta pode ter rotacionado de novo, então confira primeiro) e disparar via `workflow_dispatch`/push, não recriar os worktrees locais.
+
+Só o app (`oficina-mecanica-fiap`) foi de fato deployado **via GitHub Actions** (`gh run rerun`), do jeito certo — é o único dos 4 repositórios cujo estado real está refletido no histórico de Actions.
 
 ## Decisões e pendências para a próxima sessão
 
