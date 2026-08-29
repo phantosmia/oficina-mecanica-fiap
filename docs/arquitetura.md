@@ -127,11 +127,11 @@ Ordem de apply, portanto: **banco de dados → cluster Kubernetes → aplicaçã
 
 ## Diagrama do fluxo de deploy
 
-O diagrama abaixo detalha o fluxo executado pelo workflow `deploy-aws.yml` (GitHub Actions), desde a autenticação na AWS até a validação final do rollout no EKS. Os losangos representam pontos condicionais controlados pelos inputs do workflow (`deployment_mode`, `terraform_apply`, `build_image`).
+O diagrama abaixo detalha o fluxo executado pelo workflow `deploy-aws.yml` (GitHub Actions), desde a autenticação na AWS até a validação final do rollout no EKS. Os losangos representam pontos condicionais controlados pelo modo de deploy (`deployment_mode`, `terraform_apply`, `build_image`) — no disparo manual (`workflow_dispatch`) esses valores vêm dos inputs; no disparo automático (push em `homologacao`/`producao`) são resolvidos automaticamente (`aws-academy`, `terraform_apply`/`build_image` sempre `true`).
 
 ```mermaid
 flowchart TB
-    Start([workflow_dispatch]) --> Auth{deployment_mode}
+    Start(["push homologacao/producao<br/>ou workflow_dispatch"]) --> Auth{deployment_mode}
     Auth -->|aws| OIDC["Autentica via GitHub OIDC<br/> assume role AWS"]
     Auth -->|aws-academy| Keys["Autentica via chaves<br/> de sessão AWS Academy"]
 

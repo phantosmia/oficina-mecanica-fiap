@@ -1,6 +1,10 @@
 name: Deploy AWS/EKS
 
 on:
+  push:
+    branches:
+      - homologacao
+      - producao
   workflow_dispatch:
     inputs:
       deployment_mode:
@@ -44,10 +48,17 @@ concurrency:
   cancel-in-progress: false
 
 env:
+  # Push em homologacao/producao dispara o deploy automaticamente (deploy
+  # automático exigido pelo PDF da Fase 3); workflow_dispatch mantém o
+  # comportamento manual original (ambiente "aws", "dev" por padrão).
   AWS_REGION: ${{ vars.AWS_REGION || 'us-east-1' }}
+  DEPLOYMENT_MODE: ${{ github.event_name == 'push' && (vars.AWS_AUTH_MODE || 'aws-academy') || inputs.deployment_mode }}
+  INFRA_ENVIRONMENT: ${{ github.event_name == 'push' && github.ref_name || inputs.infra_environment || 'dev' }}
+  IMAGE_TAG: ${{ github.event_name == 'push' && github.sha || inputs.image_tag || 'latest' }}
+  WAIT_TIMEOUT: ${{ inputs.wait_timeout || '10m' }}
   TF_BACKEND_CONFIG: ${{ secrets.TF_BACKEND_CONFIG }}
   TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
-  TF_STATE_KEY: ${{ vars.TF_STATE_KEY || 'aws/dev/terraform.tfstate' }}
+  TF_STATE_KEY: aws/${{ github.event_name == 'push' && github.ref_name || inputs.infra_environment || 'dev' }}/terraform.tfstate
   TF_STATE_REGION: ${{ vars.TF_STATE_REGION || vars.AWS_REGION || 'us-east-1' }}
   TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
 
@@ -55,21 +66,24 @@ jobs:
   deploy:
     name: Deploy no EKS
     runs-on: ubuntu-latest
-    environment: aws
+    # workflow_dispatch continua no ambiente "aws" (compatibilidade); push em
+    # homologacao/producao usa o ambiente com o nome da branch, como nos
+    # outros 3 repositórios do projeto (permite secrets/aprovação por ambiente).
+    environment: ${{ github.event_name == 'push' && github.ref_name || 'aws' }}
 
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
 
       - name: Configurar credenciais AWS via OIDC
-        if: ${{ inputs.deployment_mode == 'aws' }}
+        if: ${{ env.DEPLOYMENT_MODE == 'aws' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_DEPLOY_ROLE_TO_ASSUME || secrets.AWS_ROLE_TO_ASSUME }}
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Configurar credenciais AWS Academy
-        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        if: ${{ env.DEPLOYMENT_MODE == 'aws-academy' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -82,7 +96,7 @@ jobs:
           CALLER_ARN="$(aws sts get-caller-identity --query Arn --output text)"
           echo "AWS caller: ${CALLER_ARN}"
 
-          if [[ "${CALLER_ARN}" == *":assumed-role/voclabs/"* && "${{ inputs.deployment_mode }}" != "aws-academy" ]]; then
+          if [[ "${CALLER_ARN}" == *":assumed-role/voclabs/"* && "${{ env.DEPLOYMENT_MODE }}" != "aws-academy" ]]; then
             echo "Credenciais do AWS Academy Lab detectadas. Execute este workflow com deployment_mode=aws-academy." >&2
             exit 1
           fi
@@ -175,8 +189,7 @@ jobs:
       - name: Preparar variáveis sensíveis do Terraform
         working-directory: infra/aws
         env:
-          DEPLOYMENT_MODE: ${{ inputs.deployment_mode }}
-          INFRA_ENVIRONMENT: ${{ inputs.infra_environment }}
+          # DEPLOYMENT_MODE e INFRA_ENVIRONMENT já vêm do env do workflow.
           ADMIN_PASSWORD_SECRET: ${{ secrets.ADMIN_PASSWORD }}
           JWT_SECRET_KEY_SECRET: ${{ secrets.JWT_SECRET_KEY }}
           SMTP_PASSWORD_SECRET: ${{ secrets.SMTP_PASSWORD }}
@@ -227,8 +240,6 @@ jobs:
 
       - name: Terraform plan
         working-directory: infra/aws
-        env:
-          INFRA_ENVIRONMENT: ${{ inputs.infra_environment }}
         run: |
           # Este plan lê cluster/ECR/OIDC do repositório oficina-mecanica-infra-kubernetes
           # e endpoint/senha do RDS do oficina-mecanica-infra-banco-dados via
@@ -242,8 +253,11 @@ jobs:
             exit 1
           fi
 
-      - name: Terraform apply manual
-        if: ${{ inputs.terraform_apply }}
+      - name: Terraform apply
+        # Automático no push (garante secret/IRSA aplicados em ambientes novos,
+        # como homologacao/producao na primeira vez); no workflow_dispatch
+        # continua opt-in via input.
+        if: ${{ github.event_name == 'push' || inputs.terraform_apply }}
         working-directory: infra/aws
         run: terraform apply -auto-approve tfplan
 
@@ -273,7 +287,7 @@ jobs:
           PY
 
       - name: Login no Amazon ECR
-        if: ${{ inputs.build_image }}
+        if: ${{ github.event_name == 'push' || inputs.build_image }}
         run: |
           ECR_REGISTRY="${{ steps.tf.outputs.ecr_repository_url }}"
           ECR_REGISTRY="${ECR_REGISTRY%/*}"
@@ -281,11 +295,11 @@ jobs:
             | docker login --username AWS --password-stdin "${ECR_REGISTRY}"
 
       - name: Build e push da imagem
-        if: ${{ inputs.build_image }}
+        if: ${{ github.event_name == 'push' || inputs.build_image }}
         run: |
-          IMAGE="${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
-          docker build -t oficina-mecanica-fiap:${{ inputs.image_tag }} .
-          docker tag oficina-mecanica-fiap:${{ inputs.image_tag }} "${IMAGE}"
+          IMAGE="${{ steps.tf.outputs.ecr_repository_url }}:${{ env.IMAGE_TAG }}"
+          docker build -t oficina-mecanica-fiap:${{ env.IMAGE_TAG }} .
+          docker tag oficina-mecanica-fiap:${{ env.IMAGE_TAG }} "${IMAGE}"
           docker push "${IMAGE}"
 
       - name: Configurar kubeconfig do EKS
@@ -295,7 +309,7 @@ jobs:
             --name "${{ steps.tf.outputs.cluster_name }}"
 
       - name: Preparar overlay AWS completo
-        if: ${{ inputs.deployment_mode == 'aws' }}
+        if: ${{ env.DEPLOYMENT_MODE == 'aws' }}
         run: |
           PUBLIC_BASE_URL="${{ inputs.public_base_url }}"
           if [ -z "${PUBLIC_BASE_URL}" ]; then
@@ -322,11 +336,11 @@ jobs:
 
           sed -i \
             -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
-            -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
+            -e "s|newTag: .*|newTag: ${{ env.IMAGE_TAG }}|g" \
             k8s/overlays/aws/kustomization.yaml
 
       - name: Preparar overlay AWS Academy
-        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        if: ${{ env.DEPLOYMENT_MODE == 'aws-academy' }}
         run: |
           PUBLIC_BASE_URL="${{ inputs.public_base_url }}"
           if [ -z "${PUBLIC_BASE_URL}" ]; then
@@ -340,11 +354,11 @@ jobs:
 
           sed -i \
             -e "s|newName: .*|newName: ${{ steps.tf.outputs.ecr_repository_url }}|g" \
-            -e "s|newTag: .*|newTag: ${{ inputs.image_tag }}|g" \
+            -e "s|newTag: .*|newTag: ${{ env.IMAGE_TAG }}|g" \
             k8s/overlays/aws-academy/kustomization.yaml
 
       - name: Criar Secret Kubernetes no AWS Academy
-        if: ${{ inputs.deployment_mode == 'aws-academy' }}
+        if: ${{ env.DEPLOYMENT_MODE == 'aws-academy' }}
         run: |
           kubectl apply -f k8s/base/namespace.yaml
           aws secretsmanager get-secret-value \
@@ -363,18 +377,18 @@ jobs:
             -o yaml | kubectl apply -f -
 
       - name: Validar overlay Kubernetes
-        run: kubectl kustomize "k8s/overlays/${{ inputs.deployment_mode }}" >/tmp/oficina-mecanica-aws.yaml
+        run: kubectl kustomize "k8s/overlays/${{ env.DEPLOYMENT_MODE }}" >/tmp/oficina-mecanica-aws.yaml
 
       - name: Aplicar manifests no EKS
         run: |
           kubectl delete job oficina-mecanica-migrations -n oficina-mecanica --ignore-not-found
-          kubectl apply -k "k8s/overlays/${{ inputs.deployment_mode }}"
+          kubectl apply -k "k8s/overlays/${{ env.DEPLOYMENT_MODE }}"
 
       - name: Aguardar migrations
         run: |
           kubectl wait \
             --for=condition=complete \
-            --timeout="${{ inputs.wait_timeout }}" \
+            --timeout="${{ env.WAIT_TIMEOUT }}" \
             job/oficina-mecanica-migrations \
             -n oficina-mecanica
 
@@ -383,10 +397,10 @@ jobs:
           kubectl rollout status \
             deployment/oficina-mecanica-api \
             -n oficina-mecanica \
-            --timeout="${{ inputs.wait_timeout }}"
+            --timeout="${{ env.WAIT_TIMEOUT }}"
 
       - name: Ajustar PUBLIC_BASE_URL para LoadBalancer do AWS Academy
-        if: ${{ inputs.deployment_mode == 'aws-academy' && inputs.public_base_url == '' }}
+        if: ${{ env.DEPLOYMENT_MODE == 'aws-academy' && inputs.public_base_url == '' }}
         run: |
           for attempt in $(seq 1 60); do
             API_HOST="$(kubectl get svc oficina-mecanica-api -n oficina-mecanica -o jsonpath='{.status.loadBalancer.ingress[0].hostname}')"
@@ -407,16 +421,17 @@ jobs:
             -p "{\"data\":{\"PUBLIC_BASE_URL\":\"http://${API_HOST}:8000\"}}"
 
           kubectl rollout restart deployment/oficina-mecanica-api -n oficina-mecanica
-          kubectl rollout status deployment/oficina-mecanica-api -n oficina-mecanica --timeout="${{ inputs.wait_timeout }}"
+          kubectl rollout status deployment/oficina-mecanica-api -n oficina-mecanica --timeout="${{ env.WAIT_TIMEOUT }}"
 
       - name: Resumo do deploy
         run: |
+          echo "Ambiente: ${{ env.INFRA_ENVIRONMENT }} (${{ env.DEPLOYMENT_MODE }})"
           echo "Cluster: ${{ steps.tf.outputs.cluster_name }}"
-          echo "Imagem: ${{ steps.tf.outputs.ecr_repository_url }}:${{ inputs.image_tag }}"
+          echo "Imagem: ${{ steps.tf.outputs.ecr_repository_url }}:${{ env.IMAGE_TAG }}"
           kubectl get job oficina-mecanica-migrations -n oficina-mecanica
           kubectl get deployment oficina-mecanica-api -n oficina-mecanica
           kubectl get svc oficina-mecanica-api -n oficina-mecanica
           kubectl get hpa oficina-mecanica-api -n oficina-mecanica
-          if [ "${{ inputs.deployment_mode }}" = "aws" ]; then
+          if [ "${{ env.DEPLOYMENT_MODE }}" = "aws" ]; then
             kubectl get ingress -n oficina-mecanica
           fi
