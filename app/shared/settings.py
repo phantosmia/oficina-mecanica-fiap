@@ -31,6 +31,7 @@ def _build_default_database_url() -> str:
 @dataclass(frozen=True)
 class Settings:
     app_name: str
+    log_level: str
     database_url: str
     jwt_secret_key: str
     jwt_algorithm: str
@@ -49,6 +50,7 @@ class Settings:
 
 settings = Settings(
     app_name="Oficina Mecânica FIAP API",
+    log_level=os.getenv("LOG_LEVEL", "INFO"),
     database_url=os.getenv("DATABASE_URL", _build_default_database_url()),
     jwt_secret_key=os.getenv("JWT_SECRET_KEY", "change-me-in-production"),
     jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
