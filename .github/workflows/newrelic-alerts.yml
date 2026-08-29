@@ -1,0 +1,131 @@
+name: Terraform New Relic Alerts
+
+# Diferente do deploy-aws.yml, este Terraform não é por ambiente AWS (dev/
+# homologacao/producao): é uma única conta New Relic compartilhada por todo
+# o sistema, então plan roda em PR e apply roda em push na main — sem
+# variação de branch/ambiente.
+on:
+  pull_request:
+    paths:
+      - "infra/newrelic-alerts/**"
+      - ".github/workflows/newrelic-alerts.yml"
+  push:
+    branches:
+      - main
+    paths:
+      - "infra/newrelic-alerts/**"
+      - ".github/workflows/newrelic-alerts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newrelic-alerts-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  TF_STATE_BUCKET: ${{ vars.TF_STATE_BUCKET }}
+  TF_STATE_REGION: ${{ vars.TF_STATE_REGION || 'us-east-1' }}
+  TF_LOCK_TABLE: ${{ vars.TF_LOCK_TABLE }}
+
+jobs:
+  plan:
+    name: Plan (PR)
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: infra/newrelic-alerts
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Terraform fmt
+        run: terraform fmt -check -recursive
+
+      - name: Terraform init (backend local — plan de validação, não usa state real)
+        # Terraform >= 1.15 recusa "terraform plan" após "init -backend=false"
+        # quando a config declara backend "s3" ("Backend initialization
+        # required" mesmo com -backend=false) — descoberto ao testar este
+        # workflow; o override para backend "local" contorna sem precisar
+        # de credenciais AWS só para validar um PR.
+        run: |
+          cat > override.tf <<'EOF'
+          terraform {
+            backend "local" {}
+          }
+          EOF
+          terraform init
+
+      - name: Terraform validate
+        run: terraform validate
+
+      - name: Terraform plan
+        env:
+          TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_alert_notification_email: ${{ secrets.ALERT_NOTIFICATION_EMAIL }}
+        run: terraform plan
+
+  apply:
+    name: Apply
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    environment: newrelic
+    defaults:
+      run:
+        working-directory: infra/newrelic-alerts
+
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v4
+
+      - name: Configurar Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - name: Configurar credenciais AWS Academy
+        # New Relic em si não usa AWS, mas o backend do state (S3 +
+        # DynamoDB, compartilhado com os outros repositórios) precisa.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.TF_STATE_REGION }}
+
+      - name: Preparar backend remoto do Terraform
+        run: |
+          if [ -z "${TF_STATE_BUCKET}" ] || [ -z "${TF_LOCK_TABLE}" ]; then
+            echo "Configure as variables TF_STATE_BUCKET e TF_LOCK_TABLE." >&2
+            exit 1
+          fi
+
+          cat > backend.hcl <<EOF
+          bucket         = "${TF_STATE_BUCKET}"
+          key            = "newrelic-alerts/terraform.tfstate"
+          region         = "${TF_STATE_REGION}"
+          dynamodb_table = "${TF_LOCK_TABLE}"
+          encrypt        = true
+          EOF
+
+      - name: Terraform init
+        run: terraform init -backend-config=backend.hcl
+
+      - name: Terraform apply
+        env:
+          TF_VAR_new_relic_account_id: ${{ secrets.NEW_RELIC_ACCOUNT_ID }}
+          TF_VAR_new_relic_api_key: ${{ secrets.NEW_RELIC_API_KEY }}
+          TF_VAR_alert_notification_email: ${{ secrets.ALERT_NOTIFICATION_EMAIL }}
+        run: terraform apply -auto-approve
+
+      - name: Resumo
+        run: terraform output
