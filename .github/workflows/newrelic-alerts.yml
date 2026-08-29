@@ -50,8 +50,19 @@ jobs:
       - name: Terraform fmt
         run: terraform fmt -check -recursive
 
-      - name: Terraform init (sem backend remoto — plan de validação, não usa state real)
-        run: terraform init -backend=false
+      - name: Terraform init (backend local — plan de validação, não usa state real)
+        # Terraform >= 1.15 recusa "terraform plan" após "init -backend=false"
+        # quando a config declara backend "s3" ("Backend initialization
+        # required" mesmo com -backend=false) — descoberto ao testar este
+        # workflow; o override para backend "local" contorna sem precisar
+        # de credenciais AWS só para validar um PR.
+        run: |
+          cat > override.tf <<'EOF'
+          terraform {
+            backend "local" {}
+          }
+          EOF
+          terraform init
 
       - name: Terraform validate
         run: terraform validate
@@ -80,6 +91,16 @@ jobs:
         uses: hashicorp/setup-terraform@v3
         with:
           terraform_wrapper: false
+
+      - name: Configurar credenciais AWS Academy
+        # New Relic em si não usa AWS, mas o backend do state (S3 +
+        # DynamoDB, compartilhado com os outros repositórios) precisa.
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-session-token: ${{ secrets.AWS_SESSION_TOKEN }}
+          aws-region: ${{ env.TF_STATE_REGION }}
 
       - name: Preparar backend remoto do Terraform
         run: |
