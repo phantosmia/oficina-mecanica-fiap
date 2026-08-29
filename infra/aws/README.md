@@ -109,24 +109,28 @@ Configure no GitHub:
 
 ## GitHub Actions e deploy no EKS
 
-O workflow `.github/workflows/deploy-aws.yml` executa deploy manual no EKS com `workflow_dispatch`. Ele só provisiona os recursos deste diretório (secret + IRSA da API); cluster, node group e ECR já precisam existir, provisionados separadamente pelo repositório `oficina-mecanica-infra-kubernetes`. Todos os valores de integração (`cluster_name`, `ecr_repository_url`, `oidc_provider_arn`, `rds_endpoint`, `rds_password`) são lidos automaticamente via `terraform_remote_state` — não há mais variables `CLUSTER_NAME`, `ECR_REPOSITORY_URL`, `EKS_OIDC_PROVIDER_ARN`, `RDS_ENDPOINT` ou secret `POSTGRES_PASSWORD` no GitHub.
+O workflow `.github/workflows/deploy-aws.yml` executa o deploy no EKS. Ele só provisiona os recursos deste diretório (secret + IRSA da API); cluster, node group e ECR já precisam existir, provisionados separadamente pelo repositório `oficina-mecanica-infra-kubernetes`. Todos os valores de integração (`cluster_name`, `ecr_repository_url`, `oidc_provider_arn`, `rds_endpoint`, `rds_password`) são lidos automaticamente via `terraform_remote_state` — não há mais variables `CLUSTER_NAME`, `ECR_REPOSITORY_URL`, `EKS_OIDC_PROVIDER_ARN`, `RDS_ENDPOINT` ou secret `POSTGRES_PASSWORD` no GitHub.
 
-Modos de execução:
+Dois modos de disparo:
 
-- `terraform_apply=false`: apenas lê o state remoto deste repositório, prepara o overlay AWS e roda `kubectl apply -k k8s/overlays/aws`
-- `terraform_apply=true`: executa `terraform apply -auto-approve` (deste diretório) antes do deploy Kubernetes
+- **Automático**: push nas branches `homologacao` ou `producao` (deploy automático exigido pelo PDF da Fase 3, mesmo padrão dos outros 3 repositórios do projeto). O ambiente GitHub usado é o nome da branch (`homologacao`/`producao`), `infra_environment` vira o nome da branch, o modo de autenticação é `aws-academy` (via variable `AWS_AUTH_MODE`, default `aws-academy`) e a imagem é taggeada com o SHA do commit. `terraform apply` roda sempre (necessário para criar secret/IRSA na primeira execução em um ambiente novo).
+- **Manual**: `workflow_dispatch`, com os inputs abaixo (comportamento inalterado, ambiente GitHub fixo `aws`):
+  - `terraform_apply=false`: apenas lê o state remoto deste repositório, prepara o overlay AWS e roda `kubectl apply -k k8s/overlays/aws`
+  - `terraform_apply=true`: executa `terraform apply -auto-approve` (deste diretório) antes do deploy Kubernetes
+  - `infra_environment` (default `dev`): controla qual ambiente do cluster/banco é lido via remote state (`kubernetes/<infra_environment>/terraform.tfstate` e `database/<infra_environment>/terraform.tfstate`). Use `homologacao`/`producao` para apontar para esses ambientes.
 
-Input `infra_environment` (default `dev`): controla qual ambiente do cluster/banco é lido via remote state (`kubernetes/<infra_environment>/terraform.tfstate` e `database/<infra_environment>/terraform.tfstate`). Use `homologacao`/`producao` para apontar para esses ambientes.
+> **Antes do primeiro push automático em `homologacao`/`producao`**: configure os secrets abaixo no [GitHub Environment](https://docs.github.com/actions/deployment/targeting-different-environments/using-environments-for-deployment) com o mesmo nome da branch (ou no repositório, se preferir compartilhar entre ambientes) — hoje eles só existem no ambiente `aws`, usado pelo fluxo manual. Sem isso, o job falha logo nos primeiros steps (credenciais AWS ausentes).
 
-Configure no GitHub:
+Configure no GitHub (no ambiente `aws` para o fluxo manual; em `homologacao`/`producao` — ou no repositório — para o fluxo automático):
 
-- secret `AWS_DEPLOY_ROLE_TO_ASSUME`: role OIDC com permissões para Terraform (Secrets Manager/IAM), leitura do backend S3 dos outros dois repositórios e para o EKS. Se não existir, o workflow usa `AWS_ROLE_TO_ASSUME`.
-- secret `TF_BACKEND_CONFIG`: conteúdo completo do `backend.hcl`. Alternativamente, configure as variables `TF_STATE_BUCKET`, `TF_STATE_KEY`, `TF_STATE_REGION` e `TF_LOCK_TABLE`.
+- secret `AWS_DEPLOY_ROLE_TO_ASSUME`: role OIDC com permissões para Terraform (Secrets Manager/IAM), leitura do backend S3 dos outros dois repositórios e para o EKS. Se não existir, o workflow usa `AWS_ROLE_TO_ASSUME`. Não se aplica ao modo `aws-academy` (usado automaticamente por `homologacao`/`producao`).
+- secrets `AWS_ACCESS_KEY_ID`, `AWS_SECRET_ACCESS_KEY`, `AWS_SESSION_TOKEN`: credenciais temporárias do AWS Academy Lab, usadas no modo `aws-academy`. Expiram em poucas horas — atualize-as antes de cada push que deva disparar um deploy real.
+- secret `TF_BACKEND_CONFIG`: conteúdo completo do `backend.hcl`. Alternativamente, configure as variables `TF_STATE_BUCKET`, `TF_STATE_REGION` e `TF_LOCK_TABLE` (a `key` já é calculada automaticamente como `aws/<ambiente>/terraform.tfstate`).
 - secrets `ADMIN_PASSWORD`, `JWT_SECRET_KEY`, `SMTP_PASSWORD` e `NEW_RELIC_LICENSE_KEY` (ADR-0007): valores gravados em `terraform.auto.tfvars.json` durante o workflow quando estiverem configurados. `NEW_RELIC_LICENSE_KEY` vazia desabilita o agente APM sem quebrar a aplicação.
 - variable `AWS_REGION`: região do EKS/ECR.
-- variable `PUBLIC_BASE_URL`: URL pública da API usada nos e-mails, caso o input `public_base_url` não seja informado.
+- variable `PUBLIC_BASE_URL`: URL pública da API usada nos e-mails, caso o input `public_base_url` não seja informado (só é exigida no modo `aws`; `aws-academy` usa o hostname do LoadBalancer automaticamente).
 
-Se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados, o workflow falha antes de aplicar os manifests.
+Se nem o input `public_base_url` nem a variable `PUBLIC_BASE_URL` forem informados no modo `aws`, o workflow falha antes de aplicar os manifests.
 
 O workflow substitui automaticamente no overlay AWS os valores de ECR, RDS, Secrets Manager, IRSA e região. Antes de aplicar o overlay, ele remove o Job `oficina-mecanica-migrations` para garantir que as migrations da nova imagem sejam executadas novamente.
 
