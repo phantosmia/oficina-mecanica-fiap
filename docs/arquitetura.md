@@ -21,8 +21,8 @@ erDiagram
     VEHICLES ||--o{ SERVICE_ORDERS : "é atendido em"
     SERVICE_ORDERS ||--o{ SERVICE_ORDER_SERVICES : inclui
     SERVICE_ORDERS ||--o{ SERVICE_ORDER_PARTS : inclui
-    SERVICES_CATALOG ||--o{ SERVICE_ORDER_SERVICES : "referenciado por"
     PARTS ||--o{ SERVICE_ORDER_PARTS : "referenciado por"
+    SERVICES_CATALOG ||--o{ SERVICE_ORDER_SERVICES : "referenciado por"
 
     CLIENTS {
         int id PK
@@ -40,23 +40,6 @@ erDiagram
         string model
         int year
         string license_plate UK
-    }
-    SERVICES_CATALOG {
-        int id PK
-        string name
-        string description
-        float base_price
-        int estimated_minutes
-        bool active
-    }
-    PARTS {
-        int id PK
-        string name
-        string sku UK
-        string description
-        float unit_price
-        int stock_quantity
-        int min_stock_level
     }
     SERVICE_ORDERS {
         int id PK
@@ -90,6 +73,23 @@ erDiagram
         int quantity
         float unit_price
         float subtotal
+    }
+    PARTS {
+        int id PK
+        string name
+        string sku UK
+        string description
+        float unit_price
+        int stock_quantity
+        int min_stock_level
+    }
+    SERVICES_CATALOG {
+        int id PK
+        string name
+        string description
+        float base_price
+        int estimated_minutes
+        bool active
     }
 ```
 
