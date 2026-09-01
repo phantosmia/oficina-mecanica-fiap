@@ -29,17 +29,17 @@ adapters    ->  domain (implements interface)
 
 ## Diagrama de componentes
 
-O diagrama abaixo, na notação **C4 (nível de componentes)**, representa os principais componentes da aplicação e suas dependências externas. Os atores (`Usuário Administrador` e `Cliente da Oficina`) aparecem como `Person`, a aplicação é um limite (`boundary`) com seus componentes internos, e os serviços externos (`PostgreSQL` e `SMTP Provider`) ficam fora da aplicação.
+O diagrama abaixo, na notação **C4 (nível de componentes)**, representa os principais componentes da aplicação e suas dependências externas. Os atores (`Usuário Administrador` e `Cliente da Oficina`) aparecem como `Person`, a aplicação é um limite (`boundary`) com dois sub-limites internos (`Entrada HTTP` e `Contextos de Domínio`), e os serviços externos (`PostgreSQL`, `SMTP Provider` e `New Relic`) ficam fora da aplicação.
 
 ![Diagrama de componentes C4 da aplicação Oficina Mecânica](imgs/diagramac4_componentes_oficina_mecanica_fiap.drawio.png)
 
 ### Leitura do diagrama
 
-- **Atores**: o `Usuário Administrador` gerencia clientes, veículos, catálogo, peças e ordens; o `Cliente da Oficina` acompanha e aprova ordens pelos endpoints públicos.
-- **Entrada HTTP**: a `FastAPI Application` concentra o roteamento autenticado, o `Auth / Login JWT` cuida da autenticação e emissão de token, e os `Endpoints públicos` expõem ações sem autenticação.
-- **Contextos de domínio**: `System`, `Clients`, `Vehicles`, `Service Catalog`, `Parts` e `Service Orders` representam os componentes funcionais da aplicação. `Service Orders` é o componente central do fluxo de negócio, porque orquestra diagnóstico, orçamento, aprovação, recusa, baixa de estoque e entrega.
-- **Shared**: não é um domínio de negócio; oferece recursos transversais (security/JWT, validators, error mapping, DB session e email port) consumidos pelos demais componentes.
-- **Serviços externos**: o `Banco de Dados da Oficina` (PostgreSQL) é acessado via `shared` (SQLAlchemy) e o `SMTP Provider` recebe os envios de e-mail.
+- **Atores**: o `Usuário Administrador` e o `Cliente da Oficina` fazem requisições HTTPS para a aplicação; o primeiro gerencia clientes, veículos, catálogo, peças e ordens, o segundo acompanha e aprova ordens pelos endpoints públicos.
+- **Entrada HTTP**: a `FastAPI Application` roteia chamadas autenticadas para o `Auth / Login JWT`, que cuida da autenticação e emissão de token e encaminha a requisição para o contexto de domínio correspondente. Os `Endpoints públicos` expõem ações sem autenticação e usam diretamente o contexto `Service Orders` (rastreio de ordem e aprovação/recusa pública de orçamento).
+- **Contextos de domínio**: `System`, `Clients`, `Veículos`, `Service Catalog`, `Parts` e `Service Orders` representam os componentes funcionais da aplicação. `Service Orders` é o componente central do fluxo de negócio — orquestra diagnóstico, orçamento, aprovação, recusa, baixa de estoque e entrega — e é o único contexto acessado pelas duas vias de entrada: autenticada (`Auth / Login JWT`, operações administrativas) e pública (`Endpoints públicos`, tracking e aprovação do cliente).
+- **Shared**: não é um domínio de negócio; oferece recursos transversais (security/JWT, validators, error mapping, DB session, email port e telemetry) consumidos pelos demais componentes.
+- **Serviços externos**: o `Banco de Dados da Oficina` (PostgreSQL) é lido/gravado pelo `Shared` (SQLAlchemy), o `SMTP Provider` recebe os envios de e-mail do `Shared`, e o `New Relic` recebe dados de duas origens distintas — a `FastAPI Application` reporta latência/erros/traces por rota via auto-instrumentação (agente APM), e o `Shared` registra eventos customizados de domínio (`ServiceOrderCreated`, `ServiceOrderStatusChanged`) usados pelos dashboards.
 
 ## Diagrama de componentes internos dos contextos
 
@@ -78,23 +78,22 @@ flowchart LR
 
 ## Diagrama da infraestrutura provisionada
 
-O diagrama abaixo representa os principais recursos provisionados pelo Terraform e a relação deles com o deploy Kubernetes da API.
-
-> **Nota:** este diagrama foi desenhado antes da separação de repositórios da Fase 3 e ainda mostra VPC/EKS/ECR como parte de `infra/aws` deste repositório. Hoje esses recursos ficam no repositório [`oficina-mecanica-infra-kubernetes`](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) — ver a leitura atualizada abaixo. A imagem será redesenhada em uma etapa futura.
+O diagrama abaixo representa os principais recursos provisionados na AWS e o fluxo de tráfego em runtime, agrupados por **função** (rede/cluster, aplicação, banco, observabilidade) em vez de por repositório Terraform — a divisão em 4 repositórios e a ordem de apply entre eles já têm um diagrama dedicado, [logo abaixo](#diagrama-de-dependência-entre-os-repositórios-terraform).
 
 ![Diagrama da infraestrutura provisionada na AWS](imgs/diagrama_de_infraestrutura_oficina_mecanica_fiap.drawio.png)
 
-### Leitura do diagrama de infraestrutura (atualizada)
+### Leitura do diagrama de infraestrutura
 
-- O Terraform está dividido em três repositórios: `oficina-mecanica-infra-kubernetes` (VPC, EKS, node group, ECR, IRSA de plataforma, add-ons Helm), `oficina-mecanica-infra-banco-dados` (RDS PostgreSQL, em sua própria VPC) e este repositório, `oficina-mecanica-fiap` (`infra/aws`: secret da API no Secrets Manager + IRSA do seu ServiceAccount).
-- O `Desenvolvedor` e o `GitHub Actions` acionam o fluxo de **Provisionamento e Pipeline** em cada repositório: publicam a imagem no `Amazon ECR` (Docker push, workflow `publish-ecr.yml` deste repositório) e executam `terraform apply` contra o state remoto (`S3` + `DynamoDB` para lock) de cada stack.
-- `infra/backend`, neste repositório, cria o backend remoto do Terraform (S3 para state e DynamoDB para lock) — compartilhado pelos três repositórios, cada um com sua própria `key` de state.
-- Os recursos de **Identidade e Acesso** cluster-wide (EKS OIDC, IRSA do AWS Load Balancer Controller e do External Secrets Operator, GitHub OIDC + ECR Role) residem no repositório `oficina-mecanica-infra-kubernetes`. A IRSA role do ServiceAccount da própria API (`api_secrets_irsa`) fica neste repositório, e lê o `oidc_provider_arn` exportado por aquele **automaticamente**, via `terraform_remote_state` contra o backend S3 compartilhado — sem cópia manual de variables entre os repositórios.
-- **Nota:** este diagrama e a leitura abaixo foram desenhados antes da [ADR-0006](adrs/0006-alb-interno-vpc-link.md) e ainda mostram o `Load Balancer` nas subnets públicas. Hoje o ALB é **interno** (sem IP público) e o único caminho de entrada é o AWS API Gateway do repositório `oficina-mecanica-lambda-auth`, via VPC Link — ver ADR-0006 e o diagrama de dependência atualizado logo abaixo. A imagem será redesenhada em uma etapa futura.
-- O `Usuário Final` acessava a API por HTTPS através do `Load Balancer` nas subnets públicas, que encaminha para o `API Deployment / Service` dentro do `EKS Cluster` (subnets privadas) — hoje esse acesso passa pelo API Gateway (ver nota acima).
-- Dentro do cluster ficam os workloads: `API Deployment / Service`, o `Alembic Migration Job` e os add-ons de plataforma (`HPA + metrics-server`).
-- O `Amazon RDS PostgreSQL` fica em sua própria VPC, porém **fora do cluster**, e é acessado pela API e pelo job de migração.
-- O `AWS Secrets Manager` guarda as credenciais sensíveis da API (criadas por este repositório) e do RDS (criadas pelo repositório do banco), sincronizadas para o cluster via IRSA e External Secrets Operator.
+- **Duas VPCs**, não uma só: a **VPC do cluster** (`oficina-mecanica-infra-kubernetes` — EKS Cluster e o `Load Balancer Interno`) e a **VPC do banco** (`oficina-mecanica-infra-banco-dados` — RDS e a Lambda `Authenticate`), conectadas por **VPC Peering** (`aws_vpc_peering_connection.eks_to_database`, criado no repositório do cluster) — é por esse peering que `API Deployment/Service` e `Alembic Migration Job` alcançam o RDS, que não é publicamente acessível.
+- **Entrada (ADR-0004/ADR-0006)**: o `Usuário Final` faz requisições HTTPS para o `Amazon API Gateway` — um serviço gerenciado, fora de qualquer VPC. Duas rotas convivem sobre o mesmo `Load Balancer Interno` (sem IP público desde o ADR-0006):
+  - **Rota pública** (`/{proxy+}`, sem Lambda Authorizer): vai direto via **VPC Link** até o `Load Balancer Interno` — cobre login admin, tracking sem token e aprovação de orçamento por token de uso único.
+  - **Rota autenticada** (`/api/*`): primeiro invoca a `Lambda authorize` (o Lambda Authorizer), que só valida a assinatura do JWT — sem consultar o banco nem depender de nenhuma VPC (ADR-0005, evita o custo de ENI numa função chamada a cada requisição). Se aprovado, a requisição segue pelo mesmo VPC Link até o mesmo `Load Balancer Interno` — o Lambda nunca atua como proxy da requisição.
+- **Emissão de token** (rota separada, ex. `/auth/cpf`): o `Amazon API Gateway` invoca a `Lambda Authenticate`, que roda **dentro da VPC do banco** (ADR-0005) porque precisa consultar o RDS diretamente para validar o CPF antes de emitir o JWT.
+- O `Load Balancer Interno` encaminha para o `API Deployment / Service` dentro do `EKS Cluster` (subnets privadas). Também no cluster: `Alembic Migration Job`, os add-ons de plataforma (`HPA + metrics-server`) e o `nri-bundle` (New Relic Kubernetes integration, ADR-0007).
+- O `AWS Secrets Manager` guarda as credenciais da API, sincronizadas para o cluster via IRSA/External Secrets Operator.
+- **New Relic**: hoje só **2 dos 4 pontos do ADR-0007 estão ativos** — o `API Deployment / Service` reporta latência/erros via agente APM, e o `nri-bundle` envia métricas de infraestrutura do cluster; ambos aparecem como uma única seta "Envia dados de telemetria" no diagrama. A instrumentação da Lambda (layer) e a Cloud Integration para RDS/API Gateway existem no código dos respectivos repositórios mas não estão configuradas em nenhum ambiente hoje — ver débito técnico correspondente em `docs/proximos-passos.md`.
+- **Provisionamento e Pipeline**: o `Desenvolvedor` e o `GitHub Actions` publicam a imagem no `Amazon ECR` (Docker push) e executam `terraform apply` contra o backend remoto (`Terraform State S3` + `DynamoDB` para lock) — compartilhado pelos 4 repositórios, cada um com sua própria `key` de state.
+- Os recursos de **Identidade e Acesso** (EKS OIDC + IRSA, GitHub OIDC + ECR Role) ficam no repositório do cluster.
 - Observação: no modo **AWS Academy**, a pipeline usa secrets (chaves de sessão) para acessar a conta AWS, e os recursos de OIDC/IRSA ficam desabilitados.
 
 ## Diagrama de dependência entre os repositórios Terraform
