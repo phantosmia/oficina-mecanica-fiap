@@ -18,7 +18,7 @@ Os detalhes foram separados em artigos complementares para manter este README en
 
 | Artigo | Conteúdo |
 |---|---|
-| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (componentes C4, infraestrutura AWS e fluxo de deploy) |
+| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (ER, componentes C4, infraestrutura AWS, dependência entre repositórios, fluxo de deploy e sequência) |
 | [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS, status, cálculo de orçamento e baixa de estoque |
 | [Execução local](docs/execucao-local.md) | Mise, Poetry, Docker Compose, migrations e dados de exemplo |
 | [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR e Secrets Manager |
@@ -58,7 +58,7 @@ Esta versão atende os principais requisitos do desafio:
 - testes automatizados com Testcontainers e cobertura mínima
 - Docker Compose, Kubernetes, HPA, Locust, Terraform AWS/EKS e CI/CD
 - logs estruturados em JSON, correlacionados por requisição (`X-Request-ID`) e por trace/span da APM (New Relic)
-- diagramas de arquitetura (componentes C4, infraestrutura AWS e fluxo de deploy) em [docs/arquitetura.md](docs/arquitetura.md)
+- diagramas de arquitetura (ER, componentes C4, infraestrutura AWS, dependência entre repositórios, fluxo de deploy e sequência) em [docs/arquitetura.md](docs/arquitetura.md)
 
 ## Stack
 
