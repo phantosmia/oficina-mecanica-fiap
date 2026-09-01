@@ -7,3 +7,4 @@ Ver instrução de uso no `CLAUDE.md` da raiz do repositório ("Continuidade ent
 ## Índice
 
 - [2026-08-29 — CI/CD automático, alertas New Relic, logs estruturados e provisionamento completo](2026-08-29-cicd-newrelic-logs-e-provisionamento.md)
+- [2026-08-31 — Atualiza diagramas C4 (componentes e infraestrutura) para a Fase 3](2026-08-31-atualiza-diagramas-c4-fase3.md)
