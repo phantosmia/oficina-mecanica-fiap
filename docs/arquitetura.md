@@ -10,6 +10,98 @@ A primeira versão do MVP foi implementada com **SQLite** por simplicidade de se
 - **Evolução prevista**: a justificativa anterior já apontava o PostgreSQL como destino natural; esta entrega concretiza essa migração sem alterar a Clean Architecture. Domínio, casos de uso e controllers permanecem intactos.
 - **CI determinístico**: o pipeline usa Testcontainers para provisionar um PostgreSQL `postgres:16-alpine` efêmero durante a suíte de testes.
 
+## Diagrama Entidade-Relacionamento
+
+O diagrama abaixo representa o schema do PostgreSQL (`app/shared/models.py`), gerenciado via Alembic.
+
+```mermaid
+erDiagram
+    CLIENTS ||--o{ VEHICLES : possui
+    CLIENTS ||--o{ SERVICE_ORDERS : solicita
+    VEHICLES ||--o{ SERVICE_ORDERS : "é atendido em"
+    SERVICE_ORDERS ||--o{ SERVICE_ORDER_SERVICES : inclui
+    SERVICE_ORDERS ||--o{ SERVICE_ORDER_PARTS : inclui
+    SERVICES_CATALOG ||--o{ SERVICE_ORDER_SERVICES : "referenciado por"
+    PARTS ||--o{ SERVICE_ORDER_PARTS : "referenciado por"
+
+    CLIENTS {
+        int id PK
+        string name
+        string document_type
+        string document_number UK
+        string email
+        string phone
+        string status
+    }
+    VEHICLES {
+        int id PK
+        int client_id FK
+        string brand
+        string model
+        int year
+        string license_plate UK
+    }
+    SERVICES_CATALOG {
+        int id PK
+        string name
+        string description
+        float base_price
+        int estimated_minutes
+        bool active
+    }
+    PARTS {
+        int id PK
+        string name
+        string sku UK
+        string description
+        float unit_price
+        int stock_quantity
+        int min_stock_level
+    }
+    SERVICE_ORDERS {
+        int id PK
+        int client_id FK
+        int vehicle_id FK
+        string status
+        string problem_description
+        string diagnosis_notes
+        float labor_total
+        float parts_total
+        float quote_total
+        string quote_token UK
+        datetime quote_sent_at
+        datetime approved_at
+        datetime started_at
+        datetime finished_at
+        datetime delivered_at
+    }
+    SERVICE_ORDER_SERVICES {
+        int id PK
+        int service_order_id FK
+        int service_id FK
+        int quantity
+        float unit_price
+        float subtotal
+    }
+    SERVICE_ORDER_PARTS {
+        int id PK
+        int service_order_id FK
+        int part_id FK
+        int quantity
+        float unit_price
+        float subtotal
+    }
+```
+
+### Leitura do diagrama ER
+
+- **`clients` → `vehicles` → `service_orders`**: um cliente tem vários veículos e várias ordens de serviço; um veículo pode aparecer em várias ordens ao longo do tempo (revisões diferentes). As três relações são `ON DELETE CASCADE` — apagar um cliente apaga seus veículos e ordens (`app/shared/models.py`, `ForeignKey(..., ondelete="CASCADE")`).
+- **`service_orders` → `service_order_services` / `service_order_parts`**: tabelas de associação (uma linha por item incluído na ordem), também `CASCADE` — apagar a ordem apaga seus itens.
+- **`services_catalog` → `service_order_services`** e **`parts` → `service_order_parts`**: `ON DELETE RESTRICT`, de propósito o oposto do resto do schema — não é possível apagar um serviço do catálogo ou uma peça que já foi usada em alguma ordem, porque `unit_price`/`subtotal` são um **snapshot** do preço no momento da criação da ordem (auditoria do orçamento), não uma referência viva ao preço atual do catálogo/peça (ver `docs/regras-negocio.md`).
+- `quote_token` é único e nulo até o orçamento ser enviado (`send-quote`) — é o token de uso único da aprovação pública por e-mail, invalidado (`quote_token` volta a `null`, não um flag "usado") assim que a ordem é aprovada ou recusada.
+- Os campos `*_at` (`quote_sent_at`, `approved_at`, `started_at`, `finished_at`, `delivered_at`) marcam a entrada em cada status do fluxo (`recebida → em_diagnostico → aguardando_aprovacao → em_execucao → finalizada → entregue`) e alimentam tanto o cálculo de tempo médio de execução (`GetAverageExecutionTimeUseCase`) quanto os eventos customizados do New Relic (`app/shared/telemetry.py`).
+- Não existe uma tabela de usuários/admin: o login administrativo (`POST /auth/token`) é validado contra `ADMIN_USERNAME`/`ADMIN_PASSWORD` (variáveis de ambiente, `app/shared/security.py`), não contra uma linha no banco.
+
 ## Clean Architecture
 
 O projeto adota **Clean Architecture** organizada por **contextos de domínio**. Cada contexto é independente e possui suas próprias quatro camadas internas, com dependências fluindo sempre de fora para dentro.
@@ -174,7 +266,125 @@ flowchart TB
 - **Kubernetes**: configura o `kubeconfig`, prepara o overlay Kustomize do modo escolhido, valida os manifests, recria o `Migration Job` e aplica tudo no EKS.
 - **Sincronização**: aguarda o `Migration Job` completar e o rollout do `Deployment` da API estabilizar antes de emitir o resumo final.
 
+## Diagrama de sequência
 
+Três fluxos, cobrindo autenticação via CPF (emissão do token e validação em rota protegida) e abertura de ordem de serviço. Os nomes dos componentes seguem o [diagrama de infraestrutura](#diagrama-da-infraestrutura-provisionada) acima.
+
+### Emissão do token (CPF)
+
+```mermaid
+sequenceDiagram
+    actor Cliente
+    participant GW as API Gateway
+    participant LA as Lambda Authenticate
+    participant DB as RDS PostgreSQL
+
+    Cliente->>GW: POST /auth/cpf {cpf}
+    GW->>LA: Invoca (fora de VPC; a execução roda numa ENI da VPC do banco)
+    LA->>LA: Valida formato do CPF
+    alt CPF inválido
+        LA-->>GW: 400 {detail}
+        GW-->>Cliente: 400 {detail}
+    else CPF válido
+        LA->>DB: SELECT clients WHERE document_number = ?
+        DB-->>LA: cliente (ou nenhum)
+        alt cliente inexistente ou inativo
+            LA-->>GW: 404 "Cliente não encontrado ou inativo"
+            GW-->>Cliente: 404
+        else cliente ativo
+            LA->>LA: Gera JWT (create_client_token)
+            LA-->>GW: 200 {access_token, token_type}
+            GW-->>Cliente: 200 {access_token, token_type}
+        end
+    end
+```
+
+Cliente inexistente e cliente inativo recebem a mesma resposta (404) de propósito — não revela a quem tenta autenticar se um CPF pertence a um cliente inativo ou simplesmente não existe (`docs/regras-negocio.md`).
+
+### Validação do token numa rota protegida (`/api/*`)
+
+```mermaid
+sequenceDiagram
+    actor Cliente
+    participant GW as API Gateway
+    participant AZ as Lambda authorize
+    participant ALB as Load Balancer Interno
+    participant API as FastAPI Application
+    participant DB as RDS PostgreSQL
+
+    Cliente->>GW: GET /api/service-orders/{id}/tracking<br/>Authorization: Bearer {token}
+    GW->>AZ: Invoca (Lambda Authorizer)
+    AZ->>AZ: Decodifica e valida a assinatura do JWT
+    alt token ausente ou inválido
+        AZ-->>GW: {isAuthorized: false}
+        GW-->>Cliente: 403 Forbidden
+    else token válido
+        AZ-->>GW: {isAuthorized: true, context: {sub, type, client_id}}
+        GW->>ALB: Encaminha via VPC Link
+        ALB->>API: Encaminha
+        API->>API: Valida o JWT novamente (defesa em profundidade, ADR-0004)
+        API->>DB: SELECT service_orders WHERE id = ? (checa client_id/document_number)
+        DB-->>API: dados da ordem
+        API-->>ALB: 200 {tracking}
+        ALB-->>GW: 200
+        GW-->>Cliente: 200 {tracking}
+    end
+```
+
+O `Lambda authorize` só decide `allow`/`deny` — quem entrega a requisição pro cluster é sempre o próprio API Gateway via VPC Link, nunca o Lambda (ver "Leitura do diagrama de infraestrutura" acima).
+
+### Abertura de ordem de serviço (`POST /service-orders`, admin)
+
+```mermaid
+sequenceDiagram
+    actor Admin as Usuário Administrador
+    participant GW as API Gateway
+    participant ALB as Load Balancer Interno
+    participant API as FastAPI Application
+    participant UC as CreateServiceOrderUseCase
+    participant DB as RDS PostgreSQL
+    participant NR as New Relic
+
+    Admin->>GW: POST /service-orders<br/>Authorization: Bearer {JWT admin}<br/>{client, vehicle, problem_description, requested_services, requested_parts}
+    GW->>ALB: Encaminha via VPC Link (rota pública — JWT de admin, não de cliente)
+    ALB->>API: Encaminha
+    API->>API: get_current_admin valida o JWT
+    alt JWT inválido/ausente
+        API-->>Admin: 401 Unauthorized
+    else JWT válido
+        API->>UC: execute(client_data, vehicle_data, ...)
+        UC->>DB: upsert_client(document_number, ...)
+        DB-->>UC: cliente (criado ou existente)
+        UC->>DB: upsert_vehicle(client_id, plate, ...)
+        DB-->>UC: veículo (criado ou existente)
+        loop cada serviço solicitado
+            UC->>DB: SELECT services_catalog WHERE id = ? AND active
+            DB-->>UC: serviço (base_price) ou nenhum
+        end
+        loop cada peça solicitada
+            UC->>DB: SELECT parts WHERE id = ?
+            DB-->>UC: peça (unit_price, stock_quantity) ou nenhuma
+        end
+        alt serviço/peça não encontrada
+            UC-->>API: NotFoundError
+            API-->>Admin: 404
+        else estoque insuficiente para alguma peça
+            UC-->>API: InsufficientStockError
+            API-->>Admin: 409
+        else tudo válido
+            UC->>UC: Calcula labor_total, parts_total, quote_total
+            UC->>DB: INSERT service_orders (status=recebida) + itens
+            DB-->>UC: ordem criada
+            UC->>NR: record_service_order_created (evento customizado)
+            UC-->>API: ServiceOrderEntity
+            API-->>ALB: 201 Created {ServiceOrderRead}
+            ALB-->>GW: 201
+            GW-->>Admin: 201 {ServiceOrderRead}
+        end
+    end
+```
+
+`upsert_client`/`upsert_vehicle` criam ou reaproveitam o registro existente (busca por `document_number`/`license_plate`) — uma ordem de serviço não exige cadastro prévio manual do cliente/veículo. Os itens de serviço e peça são gravados com `unit_price`/`subtotal` **snapshotados** no momento da criação (ver "Leitura do diagrama ER" acima), não como referência viva ao preço atual do catálogo.
 
 ```text
 app/
