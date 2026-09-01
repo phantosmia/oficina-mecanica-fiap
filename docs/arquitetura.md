@@ -280,7 +280,7 @@ sequenceDiagram
     participant DB as RDS PostgreSQL
 
     Cliente->>GW: POST /auth/cpf {cpf}
-    GW->>LA: Invoca (fora de VPC; a execução roda numa ENI da VPC do banco)
+    GW->>LA: Invoca (fora de VPC — a execução roda numa ENI da VPC do banco)
     LA->>LA: Valida formato do CPF
     alt CPF inválido
         LA-->>GW: 400 {detail}
