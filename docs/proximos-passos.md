@@ -11,7 +11,7 @@ Checklist vivo do que falta pra fechar os requisitos do PDF da Fase 3 (`13SOAT -
 
 ## Entregáveis finais (Portal do Aluno)
 
-- [ ] **Vídeo de demonstração**: `docs/roteiro-video.md` existente é o roteiro da **Fase 2** (cobre só deploy, CI/CD, consumo de API e escalabilidade). A Fase 3 exige também: autenticação com CPF, dashboard de monitoramento **com análise ao vivo**, e logs/traces em execução. Precisa escrever um roteiro novo (ou adaptar o atual) cobrindo os 6 itens do PDF e gravar (até 15 min, YouTube/Vimeo público ou não listado).
+- [ ] **Vídeo de demonstração**: **roteiro escrito** (`docs/roteiro-video-fase3.md`, untracked como o da Fase 2), cobrindo os 6 itens do PDF — autenticação com CPF, pipeline CI/CD, deploy automatizado, consumo das APIs protegidas, dashboard com análise ao vivo, e logs/traces —, com preparação obrigatória (o ambiente do Lab precisa ser verificado/re-provisionado antes), pontos de transparência sobre o que não está ativo (rota `/api/*` unificada, telemetria da Lambda no New Relic) e tabela de contingências. **Falta gravar** (até 15 min, YouTube/Vimeo público ou não listado).
 - [ ] **PDF único de entrega**: links dos 4 repositórios, link do vídeo, links das documentações (RFCs/ADRs/diagramas) e confirmação do usuário `soat-architecture` adicionado a todos os repositórios. Não iniciado.
 - [ ] **README de cada repositório — link para Swagger/Postman**: hoje os READMEs só apontam pro Swagger local (`http://localhost:8000/docs`). O PDF pede link pro Swagger/Postman das APIs — vale considerar linkar o Swagger do ambiente deployado (`http://<load-balancer>:8000/docs` de `homologacao`/`producao`, sabendo que o hostname muda a cada recriação do Service) ou publicar uma collection do Postman.
 
