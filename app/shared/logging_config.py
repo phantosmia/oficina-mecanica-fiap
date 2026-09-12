@@ -40,6 +40,9 @@ def get_request_id() -> str | None:
     return _request_id.get()
 
 
+_access_logger = logging.getLogger("app.request")
+
+
 class RequestIDMiddleware(BaseHTTPMiddleware):
     """Gera/propaga um `X-Request-ID` por requisição e o disponibiliza para o
     `JSONFormatter` correlacionar todos os logs emitidos durante ela."""
@@ -54,6 +57,25 @@ class RequestIDMiddleware(BaseHTTPMiddleware):
         finally:
             _request_id.reset(token)
         response.headers[REQUEST_ID_HEADER] = request_id
+
+        # Logado explicitamente aqui (em vez de depender só do access log do
+        # uvicorn.access + ContextVar): o `uvicorn.access` roda fora do
+        # escopo assíncrono deste middleware, então o `_RequestIDFilter`
+        # nunca via o request_id naquela linha (confirmado no stdout — o
+        # campo simplesmente não aparecia). Além disso, o forwarding
+        # automático de logs do agente New Relic (`newrelic.source:
+        # "logs.APM"`) só encaminha o texto puro de `record.getMessage()` +
+        # seu próprio trace.id/span.id — ignora atributos customizados de
+        # LogRecord (como o `request_id` que o `JSONFormatter` injeta). Por
+        # isso o valor vai embutido no próprio texto da mensagem abaixo, não
+        # só como campo estruturado: assim ele sobrevive às duas camadas.
+        _access_logger.info(
+            "request_id=%s method=%s path=%s status_code=%s",
+            request_id,
+            request.method,
+            request.url.path,
+            response.status_code,
+        )
         return response
 
 
