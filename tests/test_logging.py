@@ -6,6 +6,7 @@ from fastapi.testclient import TestClient
 from app.shared.logging_config import (
     REQUEST_ID_HEADER,
     JSONFormatter,
+    _access_logger,
     _RequestIDFilter,
     configure_logging,
     get_request_id,
@@ -34,6 +35,35 @@ def test_requisicoes_diferentes_geram_request_ids_diferentes(client: TestClient)
 
 def test_get_request_id_fora_de_uma_requisicao_e_none() -> None:
     assert get_request_id() is None
+
+
+def test_middleware_loga_request_id_no_texto_da_mensagem(client: TestClient, caplog) -> None:
+    # O uvicorn.access roda fora do contexto assíncrono do middleware (o
+    # ContextVar não propaga até lá — confirmado ao vivo, o campo request_id
+    # simplesmente não aparecia no log daquela linha). E o forwarding
+    # automático de log do agente New Relic só encaminha o texto puro da
+    # mensagem, ignorando atributos customizados de LogRecord. Por isso este
+    # log precisa ser emitido explicitamente pelo próprio middleware, com o
+    # request_id já embutido no texto — não só como campo estruturado.
+    #
+    # `_access_logger.disabled = False` explícito abaixo porque o autouse
+    # `reset_database` recria `alembic.config.Config("alembic.ini")` a cada
+    # teste, e `Config()` aplica `logging.config.fileConfig(...)` do próprio
+    # `alembic.ini` — que por padrão desabilita (`Logger.disabled = True`)
+    # todo logger que já existia antes dela (`disable_existing_loggers=True`,
+    # default do `fileConfig`). Como `app.request` já existe desde o import
+    # do módulo, ele fica desabilitado depois de qualquer `reset_database`.
+    # Isso é só do ambiente de teste — em produção o Alembic roda num Job
+    # separado, nunca no processo da API.
+    _access_logger.disabled = False
+    with caplog.at_level(logging.INFO, logger="app.request"):
+        response = client.get("/health", headers={REQUEST_ID_HEADER: "meu-id-de-correlacao"})
+
+    assert any(
+        "request_id=meu-id-de-correlacao" in record.getMessage() and "path=/health" in record.getMessage()
+        for record in caplog.records
+    )
+    assert response.status_code == 200
 
 
 def test_json_formatter_produz_json_valido_com_campos_esperados() -> None:
