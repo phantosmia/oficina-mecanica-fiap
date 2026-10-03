@@ -15,6 +15,7 @@ Uma RFC pode ser revisitada se o contexto mudar (por exemplo, migrar de AWS Acad
 | [0005](0005-escolha-da-ferramenta-de-monitoramento.md) | Escolha da ferramenta de monitoramento | Aceito |
 | [0006](0006-decomposicao-em-microsservicos.md) | Decomposição em microsserviços (Fase 4) | Aceito |
 | [0007](0007-mensageria-sqs-sns.md) | Mensageria entre microsserviços (SQS + SNS) | Aceito |
+| [0008](0008-separacao-orcamento-e-pagamento.md) | Orçamento e Pagamento como microsserviços separados | Aceito |
 
 ## Template
 

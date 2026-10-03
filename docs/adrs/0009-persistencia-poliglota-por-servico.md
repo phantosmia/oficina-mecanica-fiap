@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Aceito |
+| **Status** | Aceito; a linha de Orçamento & Pagamento foi substituída pela [ADR-0011](0011-persistencia-orcamento-e-pagamento.md) |
 | **Data** | 2026-10-03 |
 
 ## Contexto
@@ -41,3 +41,5 @@ Detalhes que valem para todos:
 - O custo do AWS Academy Lab sobe com três instâncias RDS em vez de uma. Elas usam a menor classe disponível; as tabelas DynamoDB não têm custo fixo.
 
 > **Nota (2026-10-03):** com a [ADR-0010](0010-diagnostico-define-o-orcamento.md), quem consulta os preços do Catálogo é a Execução, a cada diagnóstico concluído, e não mais a abertura da OS. O perfil de acesso (muita leitura por chave, pouca escrita) e a escolha do DynamoDB não mudam.
+
+> **Nota (2026-10-03):** a [RFC-0008](../rfcs/0008-separacao-orcamento-e-pagamento.md) separou Orçamento & Pagamento em dois serviços, e a [ADR-0011](0011-persistencia-orcamento-e-pagamento.md) decidiu o banco de cada um: **Orçamento em DynamoDB** e **Pagamento em PostgreSQL**. As demais linhas da tabela acima continuam valendo.

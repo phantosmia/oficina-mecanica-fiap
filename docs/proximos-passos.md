@@ -5,35 +5,36 @@ Checklist vivo do que falta pra fechar os requisitos dos PDFs da Fase 4 (`SOAT -
 
 # Fase 4: microsserviços com Saga Pattern
 
-Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos), [ADR-0010](adrs/0010-diagnostico-define-o-orcamento.md) (diagnóstico define o orçamento) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
+Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços) e [RFC-0008](rfcs/0008-separacao-orcamento-e-pagamento.md) (Orçamento e Pagamento separados: 6 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos), [ADR-0010](adrs/0010-diagnostico-define-o-orcamento.md) (diagnóstico define o orçamento) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
 
 ## 1. Desenho e documentação de decisões
 
-- [x] RFCs 0006/0007, ADRs 0008/0009/0010 e `docs/saga.md` (ADR-0001 marcada como substituída; ADR-0008 parcialmente substituída pela 0010).
-- [x] Criar os 4 repositórios novos no GitHub (`oficina-mecanica-catalogo`, `oficina-mecanica-estoque`, `oficina-mecanica-orcamento-pagamento`, `oficina-mecanica-execucao`), públicos e vazios. Convite ao `soat-architecture` (`write`) **enviado** nos 4; aceite pendente.
+- [x] RFCs 0006/0007/0008, ADRs 0008/0009/0010/0011 e `docs/saga.md` (ADR-0001 marcada como substituída; ADR-0008 parcialmente substituída pela 0010).
+- [x] Criar os 4 repositórios novos no GitHub (`oficina-mecanica-catalogo`, `oficina-mecanica-estoque`, `oficina-mecanica-orcamento-pagamento`, `oficina-mecanica-execucao`), públicos e vazios. Convite ao `soat-architecture` (`write`) **enviado** nos 4; aceite pendente. Com a RFC-0008, `oficina-mecanica-orcamento-pagamento` (ainda vazio) foi renomeado para `oficina-mecanica-orcamento` (o convite pendente continua valendo) e foi criado `oficina-mecanica-pagamento` (convite enviado).
 - [x] Tabela de repositórios do `CLAUDE.md` (local, não versionado) atualizada.
-- [x] Seção "Repositórios do projeto" do `README.md` com os 8 repositórios numa tabela só (5 microsserviços + 3 de plataforma), organizada pelo papel atual de cada um, não pela fase em que surgiu.
+- [x] Seção "Repositórios do projeto" do `README.md` com os 9 repositórios numa tabela só (6 microsserviços + 3 de plataforma), organizada pelo papel atual de cada um, não pela fase em que surgiu.
 
 ## 2. Serviços novos (cada um: Clean Architecture, testes unitários com cobertura ≥ 80%, Dockerfile, manifestos Kubernetes, Swagger)
 
 - [x] **Catálogo** (DynamoDB): [PR #1 do `oficina-mecanica-catalogo`](https://github.com/phantosmia/oficina-mecanica-catalogo/pull/1): CRUD de serviços e peças (atributos por tipo), `POST /catalog/lookup` para a Execução, `PecaCadastrada` via outbox + relay SNS, 39 testes (moto, 96,9%), Dockerfile, docker-compose com LocalStack, manifests Kubernetes e CI básico (testes, build, kustomize). Validado manualmente no LocalStack. Falta o que é das etapas 5 e 6 (SonarCloud, deploy, Terraform). Os IDs dos dados de exemplo são UUID v5 (`scripts/seed.py`): o Estoque deve usar a mesma regra para semear o saldo.
 - [x] **Estoque** (PostgreSQL): [PR #1 do `oficina-mecanica-estoque`](https://github.com/phantosmia/oficina-mecanica-estoque/pull/1): `ReservarPecas` (tudo ou nada, `SELECT ... FOR UPDATE` ordenado), `ConfirmarBaixa`, `LiberarPecas`, `DevolverPecas` e consumo de `PecaCadastrada`; Unit of Work com idempotência por `message_id` + outbox + relay SNS; trata reentrega, reenvio e compensação antes da reserva; API admin (saldos, entradas, histórico, reserva por saga); worker com uma thread por fila; 54 testes (PostgreSQL via Testcontainers + moto, 93,6%); Docker, docker-compose com LocalStack, manifests Kubernetes (com Job de migration) e CI básico. Validado no LocalStack (ida e volta de um comando em ~2,5 s). Falta o que é das etapas 5 e 6.
 - [x] **Execução** (DynamoDB): [PR #1 do `oficina-mecanica-execucao`](https://github.com/phantosmia/oficina-mecanica-execucao/pull/1): filas de diagnóstico e reparo (GSI1 como fila por etapa), `EnfileirarDiagnostico`/`EnfileirarReparo`, ações do mecânico publicando `DiagnosticoIniciado`/`DiagnosticoConcluido`/`ReparoIniciado`/`ExecucaoFinalizada`, validação dos itens no Catálogo por REST com snapshot de preços, escrita condicional contra dois mecânicos na mesma OS; 35 testes (moto + fake do Catálogo, 94,5%); Docker, docker-compose com LocalStack, manifests Kubernetes e CI básico. Validado no LocalStack com o Catálogo real ao lado. Payloads documentados em `docs/saga.md`. Falta o que é das etapas 5 e 6.
-- [ ] **Orçamento & Pagamento** (PostgreSQL): `GerarOrcamento` + e-mail com link (o token de aprovação passa a ser gerado e validado aqui, não mais no OS Service), aprovação/recusa pública por token, `CriarCobranca` via Mercado Pago + webhook, `EstornarPagamento`, `CancelarOrcamento`. Mercado Pago: **Checkout Pro via API de Orders** (`POST /v1/orders` devolve o `checkout_url`; `/cancel` e `/refund` para as compensações). Credenciais de **teste** já criadas pela usuária (conta `TESTUSER…`, conferida via `/users/me`), num arquivo local fora do Git (`.mercado_pago_credentials`, excluído via `.git/info/exclude` do `oficina-mecanica-fiap`).
+- [ ] **Orçamento** (DynamoDB, [RFC-0008](rfcs/0008-separacao-orcamento-e-pagamento.md) e [ADR-0011](adrs/0011-persistencia-orcamento-e-pagamento.md)): `GerarOrcamento` a partir do `DiagnosticoConcluido` + e-mail com link (o token de aprovação passa a ser gerado e validado aqui, não mais no OS Service), aprovação/recusa pública por token e pelo admin (publicando `OrcamentoAprovado`/`OrcamentoRecusado`), `CancelarOrcamento`.
+- [ ] **Pagamento** (PostgreSQL, [RFC-0008](rfcs/0008-separacao-orcamento-e-pagamento.md) e [ADR-0011](adrs/0011-persistencia-orcamento-e-pagamento.md)): `CriarCobranca` + e-mail com o link de pagamento, webhook com confirmação por consulta à API, `CancelarCobranca`, `EstornarPagamento`. Mercado Pago: **Checkout Pro via API de Orders** (`POST /v1/orders` devolve o `checkout_url`; `/cancel` e `/refund` para as compensações). Credenciais de **teste** já criadas pela usuária (conta `TESTUSER…`, conferida via `/users/me`), num arquivo local fora do Git (`.mercado_pago_credentials`, excluído via `.git/info/exclude` do `oficina-mecanica-fiap`).
 
 ## 3. OS Service (este repositório)
 
 - [ ] Remover `app/service_catalog` e `app/parts` (e as tabelas, via migration) depois que o Catálogo e o Estoque estiverem prontos.
 - [ ] Módulo `app/saga/`: tabela `sagas`, máquina de estados, outbox + publicador, consumidor de `os-saga-eventos`, tarefa periódica de prazos.
 - [ ] Abertura da OS sem itens (só cliente, veículo e problema; itens vêm do diagnóstico) e nova máquina de status (`aguardando_pagamento`, `cancelada`), com atualização de `docs/regras-negocio.md`/`docs/api.md`.
-- [ ] Remover o fluxo de aprovação/envio de orçamento daqui (vai para Orçamento & Pagamento).
+- [ ] Remover o fluxo de aprovação/envio de orçamento daqui (vai para o serviço de Orçamento).
 
 ## 4. Integração e testes ponta a ponta
 
-- [ ] `docker-compose` com os 5 serviços + LocalStack (SQS, SNS, DynamoDB) + PostgreSQLs.
+- [ ] `docker-compose` com os 6 serviços + LocalStack (SQS, SNS, DynamoDB) + PostgreSQLs.
 - [ ] **BDD** (`pytest-bdd`): fluxo feliz completo e pelo menos um fluxo com compensação.
 
-## 5. CI/CD e qualidade (em cada um dos 5 repositórios)
+## 5. CI/CD e qualidade (em cada um dos 6 repositórios)
 
 - [ ] Pipeline independente: build, testes, SonarCloud, deploy no EKS. **Depende da usuária**: login no SonarCloud com a organização `phantosmia` e token.
 - [ ] Proteção da branch `main` (PR obrigatório + checagens obrigatórias).
@@ -43,7 +44,7 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 - [ ] Terraform de cada serviço: filas SQS + DLQs, tópico SNS, assinaturas, RDS (dentro da VPC de banco existente, sem VPC nova) ou tabela DynamoDB. Confirmar no Lab que DynamoDB/SQS/SNS estão liberados.
 - [ ] Atualizar o diagrama de dependência entre repositórios Terraform (`docs/arquitetura.md`).
-- [ ] Observabilidade: APM do New Relic nos 5 serviços, propagação de *trace context* nas mensagens e `order_id`/`saga_id` nos logs estruturados.
+- [ ] Observabilidade: APM do New Relic nos 6 serviços, propagação de *trace context* nas mensagens e `order_id`/`saga_id` nos logs estruturados.
 
 ## 7. Entregáveis da Fase 4
 

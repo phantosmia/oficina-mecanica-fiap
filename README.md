@@ -28,21 +28,22 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, Locust, HPA e GitHub Actions |
 | [Segurança](docs/seguranca.md) | Bandit, pip-audit, Trivy e relatórios gerados |
 | [Saga da ordem de serviço](docs/saga.md) | Fase 4: contratos entre os microsserviços (comandos, eventos, compensações, prazos e envelope das mensagens) |
-| [RFCs](docs/rfcs/README.md) | Decisões técnicas relevantes: nuvem, banco, autenticação, API Gateway, monitoramento, decomposição em microsserviços e mensageria |
+| [RFCs](docs/rfcs/README.md) | Decisões técnicas relevantes: nuvem, banco, autenticação, API Gateway, monitoramento, decomposição em microsserviços, mensageria e separação de Orçamento e Pagamento |
 | [ADRs](docs/adrs/README.md) | Decisões arquiteturais permanentes: padrão de comunicação, HPA, banco gerenciado, saga orquestrada e persistência poliglota |
 | [Terraform AWS](infra/aws/README.md) | Stack AWS principal |
 | [Terraform backend](infra/backend/README.md) | Backend remoto em S3 com lock em DynamoDB |
 
 ## Repositórios do projeto
 
-O sistema é composto por 8 repositórios, cada um com CI/CD e regras de proteção próprias: 5 microsserviços ([RFC-0006](docs/rfcs/0006-decomposicao-em-microsservicos.md), contrato entre eles em [`docs/saga.md`](docs/saga.md)) e 3 repositórios de plataforma compartilhada por todos eles.
+O sistema é composto por 9 repositórios, cada um com CI/CD e regras de proteção próprias: 6 microsserviços ([RFC-0006](docs/rfcs/0006-decomposicao-em-microsservicos.md) e [RFC-0008](docs/rfcs/0008-separacao-orcamento-e-pagamento.md), contrato entre eles em [`docs/saga.md`](docs/saga.md)) e 3 repositórios de plataforma compartilhada por todos eles.
 
 | Repositório | Papel | Tecnologia principal |
 |---|---|---|
 | [oficina-mecanica-fiap](https://github.com/phantosmia/oficina-mecanica-fiap) (este) | Microsserviço **OS Service**: clientes, veículos, ordens de serviço e orquestrador da saga | FastAPI + PostgreSQL |
 | [oficina-mecanica-catalogo](https://github.com/phantosmia/oficina-mecanica-catalogo) | Microsserviço **Catálogo**: serviços e fichas de peças (consultado por REST síncrono, fora da saga) | FastAPI + DynamoDB |
 | [oficina-mecanica-estoque](https://github.com/phantosmia/oficina-mecanica-estoque) | Microsserviço **Estoque**: saldo e reservas de peças (participante da saga) | FastAPI + PostgreSQL |
-| [oficina-mecanica-orcamento-pagamento](https://github.com/phantosmia/oficina-mecanica-orcamento-pagamento) | Microsserviço **Orçamento & Pagamento**: orçamento, aprovação e pagamento via Mercado Pago (participante da saga) | FastAPI + PostgreSQL |
+| [oficina-mecanica-orcamento](https://github.com/phantosmia/oficina-mecanica-orcamento) | Microsserviço **Orçamento**: geração do orçamento, envio para aprovação e aprovação/recusa (participante da saga) | FastAPI + DynamoDB |
+| [oficina-mecanica-pagamento](https://github.com/phantosmia/oficina-mecanica-pagamento) | Microsserviço **Pagamento**: cobrança e estorno via Mercado Pago (participante da saga) | FastAPI + PostgreSQL |
 | [oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao) | Microsserviço **Execução**: fila de execução, diagnóstico e reparo (participante da saga) | FastAPI + DynamoDB |
 | [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Plataforma: autenticação via CPF e API Gateway | AWS Lambda + Terraform |
 | [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Plataforma: VPC, cluster EKS, ECR e add-ons | Terraform |
