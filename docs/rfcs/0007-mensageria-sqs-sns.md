@@ -54,10 +54,8 @@ flowchart LR
     QX --> Execucao[Execução] --> TX
     TE & TO & TX --> QS --> OS
     Catalogo[Catálogo] --> TC --> QEC --> Estoque
-    Execucao -. REST síncrono<br/>ao concluir o diagnóstico .-> Catalogo
 ```
 
-- **A linha tracejada não é mensageria**: é a consulta REST síncrona que a Execução faz ao Catálogo quando o mecânico conclui o diagnóstico ([RFC-0006](0006-decomposicao-em-microsservicos.md)). Aparece aqui só para o diagrama mostrar todas as dependências entre os serviços.
 - **Cada participante tem uma fila de comandos** (`<servico>-comandos`), consumida só por ele.
 - **Cada serviço que publica eventos tem um tópico SNS** (`<servico>-eventos`). Quem tem interesse assina o tópico com uma fila própria: o orquestrador assina os tópicos de Estoque, Orçamento & Pagamento e Execução com a fila `os-saga-eventos`; o Estoque assina o tópico do Catálogo. O publicador não sabe quem consome.
 - **Toda fila tem uma DLQ** (`<fila>-dlq`), para onde a mensagem vai depois de 5 tentativas de processamento sem sucesso.
@@ -75,3 +73,36 @@ flowchart LR
 - **Negativas**: entrega *at-least-once* sem ordem obriga idempotência e checagem de estado em todo consumidor. É código a mais, mas é também o que torna o sistema correto diante de reentregas. O padrão outbox adiciona uma tabela e um processo de publicação por serviço.
 - **Dependência de nuvem**: o código de negócio fica isolado atrás de portas (`IMessagePublisher`, `IMessageConsumer`), com os adapters SQS/SNS em `adapters/`, seguindo a mesma Clean Architecture das fases anteriores. Trocar para RabbitMQ, por exemplo, exigiria só novos adapters.
 - Esta RFC substitui a parte da [ADR-0001](../adrs/0001-padrao-de-comunicacao-sincrono.md) que descartava mensageria. A própria ADR-0001 já previa revisitar a decisão quando os contextos precisassem de deploy independente ou de comunicação assíncrona.
+
+## Revisão (2026-10-03): a consulta REST da Execução ao Catálogo
+
+Com a [ADR-0010](../adrs/0010-diagnostico-define-o-orcamento.md), a Execução passa a consultar o Catálogo por REST síncrono ao concluir o diagnóstico (ver a revisão da [RFC-0006](0006-decomposicao-em-microsservicos.md)). Isso não muda nenhuma fila nem tópico desta RFC, mas é uma dependência entre serviços que o diagrama acima não mostra. O diagrama completo, com essa chamada como linha tracejada (não é mensageria):
+
+```mermaid
+flowchart LR
+    OS[OS Service<br/>orquestrador]
+
+    subgraph Comandos [Filas de comando SQS]
+        QE[estoque-comandos]
+        QO[orcamento-pagamento-comandos]
+        QX[execucao-comandos]
+    end
+
+    subgraph Eventos [Tópicos de eventos SNS]
+        TC[catalogo-eventos]
+        TE[estoque-eventos]
+        TO[orcamento-pagamento-eventos]
+        TX[execucao-eventos]
+    end
+
+    QS[os-saga-eventos<br/>fila SQS]
+    QEC[estoque-catalogo-eventos<br/>fila SQS]
+
+    OS --> QE & QO & QX
+    QE --> Estoque --> TE
+    QO --> Orcamento[Orçamento & Pagamento] --> TO
+    QX --> Execucao[Execução] --> TX
+    TE & TO & TX --> QS --> OS
+    Catalogo[Catálogo] --> TC --> QEC --> Estoque
+    Execucao -. REST síncrono<br/>ao concluir o diagnóstico .-> Catalogo
+```

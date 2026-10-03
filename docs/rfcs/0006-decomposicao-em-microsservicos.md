@@ -41,11 +41,11 @@ Critérios usados no corte:
 
 - **Dono do dado = dono da regra.** Quem decide se há estoque é quem guarda o estoque; quem decide se o pagamento foi aprovado é quem conversa com o Mercado Pago. Nenhuma regra de negócio depende de ler o banco de outro serviço.
 - **Ciclos de vida distintos.** Cadastro (catálogo), saldo (estoque), dinheiro (orçamento/pagamento), operação de chão de oficina (execução) e o agregado central (OS) mudam por motivos e em ritmos diferentes.
-- **Snapshot em vez de referência viva.** A regra das fases anteriores, de gravar `unit_price`/`subtotal` na criação da OS para auditoria, já tornava a OS independente de mudanças futuras de preço. Na Fase 4 ela vira o contrato entre os serviços: a Execução copia os preços do Catálogo quando o mecânico conclui o diagnóstico, e o orçamento é gerado a partir dessa cópia.
+- **Snapshot em vez de referência viva.** A regra das fases anteriores, de gravar `unit_price`/`subtotal` na criação da OS para auditoria, já tornava a OS independente de mudanças futuras de preço. Na Fase 4 ela vira o contrato entre os serviços: o OS Service copia os preços do Catálogo na abertura, e o orçamento é gerado a partir dessa cópia.
 
 ### Como os serviços se integram
 
-- **Catálogo fora da saga, via REST síncrono.** Ao concluir o diagnóstico, o mecânico informa à Execução quais serviços e peças a OS precisa. A Execução consulta o Catálogo para validar esses itens e copiar os preços antes de aceitar o diagnóstico. É uma leitura sem efeito colateral, então não há o que compensar, e o mecânico precisa da resposta na hora: item inexistente ou desativado resulta em erro imediato na própria tela do diagnóstico. É o caso de "REST síncrono quando necessário" previsto no PDF.
+- **Catálogo fora da saga, via REST síncrono.** Na abertura da OS, o OS Service consulta o Catálogo para validar os serviços e peças pedidos e copiar os preços. É uma leitura sem efeito colateral, então não há o que compensar, e o cliente da API precisa da resposta na hora: item inexistente continua resultando em 404 imediato, como nas fases anteriores. É o caso de "REST síncrono quando necessário" previsto no PDF.
 - **Estoque, Orçamento & Pagamento e Execução como participantes da saga, via mensageria.** Esses passos têm efeito colateral (reservar saldo, cobrar, enfileirar) e precisam de compensação em caso de falha. Ver [ADR-0008](../adrs/0008-saga-orquestrada-no-os-service.md) e [RFC-0007](0007-mensageria-sqs-sns.md).
 - **Catálogo → Estoque por evento.** Quando uma peça é cadastrada no Catálogo, ele publica `PecaCadastrada`; o Estoque reage criando o saldo zerado daquela peça. O Estoque nunca consulta o banco do Catálogo.
 
@@ -55,3 +55,12 @@ Critérios usados no corte:
 - **Negativas**: perde-se a atomicidade do banco único. A aprovação, que antes decrementava o estoque e mudava o status numa transação só, agora exige uma saga com compensações. Consultas que cruzam domínios (por exemplo, "OS com os nomes das peças") passam a depender dos snapshots gravados na própria OS, sem join.
 - **Operacionais**: cinco pipelines, cinco deploys, três instâncias RDS e duas tabelas DynamoDB para reprovisionar a cada rotação do AWS Academy Lab. Para limitar o custo, as instâncias RDS usam a menor classe disponível no Lab, e as tabelas DynamoDB usam cobrança sob demanda.
 - **Em aberto**: extrair o orquestrador para um serviço próprio, caso o número de sagas cresça (ver ADR-0008).
+
+## Revisão (2026-10-03): quem consulta o Catálogo
+
+Com a [ADR-0010](../adrs/0010-diagnostico-define-o-orcamento.md), os serviços e peças da OS deixam de ser informados na abertura e passam a ser escolhidos pelo mecânico no diagnóstico, dentro da Execução. Com isso, dois pontos desta RFC mudam:
+
+- **Quem consulta o Catálogo por REST síncrono é a Execução**, ao concluir o diagnóstico, e não o OS Service na abertura da OS. Continua sendo uma leitura sem efeito colateral, fora da saga, e continua sendo o caso de "REST síncrono quando necessário": o mecânico precisa da resposta na hora, e item inexistente ou desativado vira erro imediato na tela do diagnóstico.
+- **O snapshot de preços é copiado pela Execução**, que o envia no evento `DiagnosticoConcluido`. O orçamento é gerado a partir dessa cópia.
+
+A divisão em 5 serviços e os critérios de corte não mudam.

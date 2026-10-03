@@ -5,11 +5,11 @@ Checklist vivo do que falta pra fechar os requisitos dos PDFs da Fase 4 (`SOAT -
 
 # Fase 4: microsserviços com Saga Pattern
 
-Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
+Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos), [ADR-0010](adrs/0010-diagnostico-define-o-orcamento.md) (diagnóstico define o orçamento) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
 
 ## 1. Desenho e documentação de decisões
 
-- [x] RFCs 0006/0007, ADRs 0008/0009 e `docs/saga.md` (ADR-0001 marcada como substituída).
+- [x] RFCs 0006/0007, ADRs 0008/0009/0010 e `docs/saga.md` (ADR-0001 marcada como substituída; ADR-0008 parcialmente substituída pela 0010).
 - [x] Criar os 4 repositórios novos no GitHub (`oficina-mecanica-catalogo`, `oficina-mecanica-estoque`, `oficina-mecanica-orcamento-pagamento`, `oficina-mecanica-execucao`), públicos e vazios. Convite ao `soat-architecture` (`write`) **enviado** nos 4; aceite pendente.
 - [x] Tabela de repositórios do `CLAUDE.md` (local, não versionado) atualizada.
 - [x] Seção "Repositórios do projeto" do `README.md` com os 8 repositórios numa tabela só (5 microsserviços + 3 de plataforma), organizada pelo papel atual de cada um, não pela fase em que surgiu.

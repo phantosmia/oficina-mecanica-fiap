@@ -1,6 +1,6 @@
 # Saga da ordem de serviço: contratos entre os microsserviços
 
-Especificação da saga orquestrada que coordena o fluxo da OS entre os cinco microsserviços da Fase 4. A justificativa das decisões está em [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (divisão dos serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (mensageria), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (estilo da saga) e [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos). Este documento é o **contrato** que os cinco repositórios implementam: mudou aqui, muda nos serviços.
+Especificação da saga orquestrada que coordena o fluxo da OS entre os cinco microsserviços da Fase 4. A justificativa das decisões está em [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (divisão dos serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (mensageria), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (estilo da saga), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos) e [ADR-0010](adrs/0010-diagnostico-define-o-orcamento.md) (o diagnóstico define o orçamento). Este documento é o **contrato** que os cinco repositórios implementam: mudou aqui, muda nos serviços.
 
 ## Participantes
 
