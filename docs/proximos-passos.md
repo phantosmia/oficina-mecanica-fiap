@@ -12,7 +12,7 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 - [x] RFCs 0006/0007, ADRs 0008/0009 e `docs/saga.md` (ADR-0001 marcada como substituída).
 - [x] Criar os 4 repositórios novos no GitHub (`oficina-mecanica-catalogo`, `oficina-mecanica-estoque`, `oficina-mecanica-orcamento-pagamento`, `oficina-mecanica-execucao`), públicos e vazios. Convite ao `soat-architecture` (`write`) **enviado** nos 4; aceite pendente.
 - [x] Tabela de repositórios do `CLAUDE.md` (local, não versionado) atualizada.
-- [ ] Seção "Repositórios" do `README.md` com os 4 novos (fazer junto da refatoração do OS Service, quando o README for reescrito para a Fase 4).
+- [x] Seção "Repositórios do projeto" do `README.md` com os 3 da Fase 3 (plataforma compartilhada) e os 5 microsserviços da Fase 4. Atualizar a coluna "Status" conforme cada serviço for implementado.
 
 ## 2. Serviços novos (cada um: Clean Architecture, testes unitários com cobertura ≥ 80%, Dockerfile, manifestos Kubernetes, Swagger)
 
