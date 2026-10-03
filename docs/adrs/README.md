@@ -8,13 +8,15 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 
 | ADR | Título | Status |
 |---|---|---|
-| [0001](0001-padrao-de-comunicacao-sincrono.md) | Padrão de comunicação síncrono via REST/HTTP | Aceito |
+| [0001](0001-padrao-de-comunicacao-sincrono.md) | Padrão de comunicação síncrono via REST/HTTP | Substituído por [RFC-0007](../rfcs/0007-mensageria-sqs-sns.md) e [ADR-0008](0008-saga-orquestrada-no-os-service.md) |
 | [0002](0002-uso-de-hpa-para-escalabilidade.md) | Uso de HPA para escalabilidade automática | Aceito |
 | [0003](0003-postgresql-gerenciado-rds.md) | PostgreSQL gerenciado (RDS) em produção | Aceito |
 | [0004](0004-api-gateway-como-ponto-de-entrada.md) | API Gateway como ponto único de entrada e autorização | Aceito |
 | [0005](0005-lambda-auth-na-vpc-do-banco.md) | Lambda de autenticação implantada na VPC do banco de dados | Aceito |
 | [0006](0006-alb-interno-vpc-link.md) | ALB interno + VPC Link como único ponto de entrada público | Aceito |
 | [0007](0007-new-relic-como-plataforma-de-observabilidade.md) | New Relic como plataforma de observabilidade | Aceito |
+| [0008](0008-saga-orquestrada-no-os-service.md) | Saga orquestrada, com o orquestrador dentro do OS Service | Aceito |
+| [0009](0009-persistencia-poliglota-por-servico.md) | Persistência poliglota, com um banco por serviço | Aceito |
 
 ## Template
 
