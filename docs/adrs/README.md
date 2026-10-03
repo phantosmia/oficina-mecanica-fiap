@@ -16,8 +16,9 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 | [0006](0006-alb-interno-vpc-link.md) | ALB interno + VPC Link como único ponto de entrada público | Aceito |
 | [0007](0007-new-relic-como-plataforma-de-observabilidade.md) | New Relic como plataforma de observabilidade | Aceito |
 | [0008](0008-saga-orquestrada-no-os-service.md) | Saga orquestrada, com o orquestrador dentro do OS Service | Aceito; fluxo substituído pela [ADR-0010](0010-diagnostico-define-o-orcamento.md) |
-| [0009](0009-persistencia-poliglota-por-servico.md) | Persistência poliglota, com um banco por serviço | Aceito; linha de Orçamento & Pagamento substituída pela [RFC-0008](../rfcs/0008-separacao-orcamento-e-pagamento.md) |
+| [0009](0009-persistencia-poliglota-por-servico.md) | Persistência poliglota, com um banco por serviço | Aceito; linha de Orçamento & Pagamento substituída pela [ADR-0011](0011-persistencia-orcamento-e-pagamento.md) |
 | [0010](0010-diagnostico-define-o-orcamento.md) | O diagnóstico define o orçamento | Aceito |
+| [0011](0011-persistencia-orcamento-e-pagamento.md) | Orçamento em DynamoDB e Pagamento em PostgreSQL | Aceito |
 
 ## Template
 

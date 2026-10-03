@@ -25,13 +25,12 @@ Os dois lados têm naturezas diferentes:
 
 | Serviço | Repositório | Responsabilidade | Banco |
 |---|---|---|---|
-| **Orçamento** | `oficina-mecanica-orcamento` (o antigo `oficina-mecanica-orcamento-pagamento`, renomeado ainda vazio) | Gera o orçamento a partir do `DiagnosticoConcluido`, envia ao cliente o link de aprovação com token, registra aprovação/recusa (pelo link ou pelo admin), cancela | **DynamoDB** |
-| **Pagamento** | `oficina-mecanica-pagamento` | Cria a cobrança no Mercado Pago (Checkout Pro via API de Orders) e envia o link de pagamento, recebe o webhook e confirma o resultado consultando o Mercado Pago, cancela cobrança não paga, estorna pagamento feito | **PostgreSQL** (RDS) |
+| **Orçamento** | `oficina-mecanica-orcamento` (o antigo `oficina-mecanica-orcamento-pagamento`, renomeado ainda vazio) | Gera o orçamento a partir do `DiagnosticoConcluido`, envia ao cliente o link de aprovação com token, registra aprovação/recusa (pelo link ou pelo admin), cancela | DynamoDB ([ADR-0011](../adrs/0011-persistencia-orcamento-e-pagamento.md)) |
+| **Pagamento** | `oficina-mecanica-pagamento` | Cria a cobrança no Mercado Pago (Checkout Pro via API de Orders) e envia o link de pagamento, recebe o webhook e confirma o resultado consultando o Mercado Pago, cancela cobrança não paga, estorna pagamento feito | PostgreSQL ([ADR-0011](../adrs/0011-persistencia-orcamento-e-pagamento.md)) |
 
 ### Bancos
 
-- **Orçamento em DynamoDB.** Um orçamento é um documento: itens com preços copiados do diagnóstico, totais, status, token de aprovação e prazo. É lido sempre por chave (ID do orçamento, ID da OS, token do link, via índice secundário) e muda de status com escrita condicional ("só aprova se ainda estiver aguardando aprovação"), o mesmo padrão já usado na Execução. Também evita uma quarta instância RDS no AWS Academy Lab.
-- **Pagamento em PostgreSQL.** Dinheiro, com o mesmo argumento que a [ADR-0009](../adrs/0009-persistencia-poliglota-por-servico.md) usava para o serviço combinado: o webhook do Mercado Pago pode chegar repetido, e a idempotência depende de uma restrição `UNIQUE` sobre o ID da order no Mercado Pago, dentro da mesma transação que atualiza o status do pagamento. O payload bruto do webhook vai para uma coluna `JSONB`, para auditoria.
+A escolha do banco de cada um está na [ADR-0011](../adrs/0011-persistencia-orcamento-e-pagamento.md): **Orçamento em DynamoDB** e **Pagamento em PostgreSQL**.
 
 ### Mudanças no contrato da saga
 
@@ -46,4 +45,4 @@ O orquestrador já tratava orçamento e pagamento como passos distintos. Com a s
 
 - **Positivas**: uma indisponibilidade do Mercado Pago não afeta a geração nem a aprovação de orçamentos (a saga só espera ou compensa no passo da cobrança). O webhook público e as credenciais do Mercado Pago ficam isolados num serviço pequeno. Trocar de provedor de pagamento não toca no Orçamento.
 - **Negativas**: um sexto serviço, com repositório, pipeline, deploy e infraestrutura (fila, tópico, RDS) para recriar a cada rotação do AWS Academy Lab. A saga ganha uma compensação a mais (`CancelarCobranca`), e o comando `CriarCobranca` passa a carregar uma cópia dos dados do orçamento.
-- A [RFC-0006](0006-decomposicao-em-microsservicos.md), a [RFC-0007](0007-mensageria-sqs-sns.md) e a [ADR-0009](../adrs/0009-persistencia-poliglota-por-servico.md) ganham notas de revisão apontando para esta RFC.
+- A [RFC-0006](0006-decomposicao-em-microsservicos.md) e a [RFC-0007](0007-mensageria-sqs-sns.md) ganham notas de revisão apontando para esta RFC. A [ADR-0009](../adrs/0009-persistencia-poliglota-por-servico.md) fica parcialmente substituída pela [ADR-0011](../adrs/0011-persistencia-orcamento-e-pagamento.md).

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Aceito; a linha de Orçamento & Pagamento foi substituída pela [RFC-0008](../rfcs/0008-separacao-orcamento-e-pagamento.md) |
+| **Status** | Aceito; a linha de Orçamento & Pagamento foi substituída pela [ADR-0011](0011-persistencia-orcamento-e-pagamento.md) |
 | **Data** | 2026-10-03 |
 
 ## Contexto
@@ -42,4 +42,4 @@ Detalhes que valem para todos:
 
 > **Nota (2026-10-03):** com a [ADR-0010](0010-diagnostico-define-o-orcamento.md), quem consulta os preços do Catálogo é a Execução, a cada diagnóstico concluído, e não mais a abertura da OS. O perfil de acesso (muita leitura por chave, pouca escrita) e a escolha do DynamoDB não mudam.
 
-> **Nota (2026-10-03):** a [RFC-0008](../rfcs/0008-separacao-orcamento-e-pagamento.md) separou Orçamento & Pagamento em dois serviços. **Pagamento** continua em PostgreSQL, pelos mesmos motivos da linha acima. **Orçamento** passa para **DynamoDB**: sem o pagamento no mesmo banco, o orçamento é um documento lido por chave e atualizado com escrita condicional, como a Execução. O sistema fica com três bancos PostgreSQL (OS Service, Estoque, Pagamento) e três tabelas DynamoDB (Catálogo, Execução, Orçamento).
+> **Nota (2026-10-03):** a [RFC-0008](../rfcs/0008-separacao-orcamento-e-pagamento.md) separou Orçamento & Pagamento em dois serviços, e a [ADR-0011](0011-persistencia-orcamento-e-pagamento.md) decidiu o banco de cada um: **Orçamento em DynamoDB** e **Pagamento em PostgreSQL**. As demais linhas da tabela acima continuam valendo.
