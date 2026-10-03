@@ -152,6 +152,40 @@ Regras para todos os consumidores:
 - **Eventos fora de ordem ou atrasados**: o orquestrador ignora (e registra em log) eventos que não são válidos para o estado atual da saga.
 - **Erros**: falha de negócio vira um evento de falha (`ReservaRecusada`, `OrcamentoFalhou`, ...), nunca uma exceção. Exceção é reservada para falha técnica (banco fora, bug) e faz a mensagem voltar para a fila; depois de 5 tentativas, ela vai para a DLQ.
 
+## Payloads
+
+Conteúdo do campo `payload` de cada mensagem já implementada. `saga_id` e `order_id` vão sempre no envelope, nunca no payload. Os de Orçamento & Pagamento entram aqui quando o serviço for implementado.
+
+### Execução ([oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao))
+
+| Mensagem | Payload |
+|---|---|
+| `EnfileirarDiagnostico` | `problem_description` (obrigatório) e `vehicle` opcional: `{plate, brand, model, year}` |
+| `DiagnosticoEnfileirado`, `ReparoEnfileirado`, `DiagnosticoIniciado`, `ReparoIniciado` | vazio |
+| `EnfileirarReparo` | vazio |
+| `EnfileiramentoFalhou` | `etapa` (`diagnostico` ou `reparo`) e `reason` (`payload_invalido`, `os_ja_esta_na_execucao`, `os_nao_encontrada`, `status_<etapa atual>`) |
+| `DiagnosticoConcluido` | `notes`; `services`: `[{service_id, name, quantity, unit_price, subtotal}]`; `parts`: `[{part_id, name, quantity, unit_price, subtotal}]`; `labor_total`, `parts_total`, `total`. Preços copiados do Catálogo no momento do diagnóstico |
+| `ExecucaoFinalizada` | `notes` (pode ser `null`) |
+
+### Estoque ([oficina-mecanica-estoque](https://github.com/phantosmia/oficina-mecanica-estoque))
+
+| Mensagem | Payload |
+|---|---|
+| `ReservarPecas` | `items`: `[{part_id, quantity}]`. O orquestrador monta a partir de `DiagnosticoConcluido.parts`. Lista vazia é válida (diagnóstico só com serviços) |
+| `PecasReservadas`, `BaixaConfirmada` | `reservation_id` e `items`: `[{part_id, quantity}]` |
+| `ReservaRecusada` | `reservation_id`, `reason` (`estoque_insuficiente`, `quantidade_invalida`, `saga_ja_compensada`) e `unavailable`: `[{part_id, requested, available, reason}]` |
+| `ConfirmarBaixa`, `LiberarPecas`, `DevolverPecas` | vazio |
+| `BaixaFalhou` | `reason` (`reserva_inexistente`, `reserva_<status>`) |
+| `PecasLiberadas`, `PecasDevolvidas` | vazio |
+
+### Catálogo ([oficina-mecanica-catalogo](https://github.com/phantosmia/oficina-mecanica-catalogo))
+
+| Mensagem | Payload |
+|---|---|
+| `PecaCadastrada` | `part_id`, `sku`, `name` |
+
+A consulta síncrona da Execução ao Catálogo é `POST /catalog/lookup` com `{service_ids, part_ids}` (até 100 de cada). A resposta traz os itens encontrados (com `active`) e os IDs inexistentes em `missing_service_ids`/`missing_part_ids`.
+
 ## Prazos
 
 | Espera | Prazo padrão | Ao expirar |
