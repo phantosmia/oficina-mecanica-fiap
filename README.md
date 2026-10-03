@@ -5,6 +5,7 @@ MVP do back-end do Sistema Integrado de Atendimento e Execução de Serviços de
 ## Índice
 
 - [Documentação complementar](#documentação-complementar)
+- [Repositórios do projeto](#repositórios-do-projeto)
 - [Visão geral](#visão-geral)
 - [Stack](#stack)
 - [Como rodar rápido](#como-rodar-rápido)
@@ -32,15 +33,20 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | [Terraform AWS](infra/aws/README.md) | Stack AWS principal |
 | [Terraform backend](infra/backend/README.md) | Backend remoto em S3 com lock em DynamoDB |
 
-## Repositórios da Fase 3
+## Repositórios do projeto
 
-A Fase 3 do Tech Challenge exige 4 repositórios separados, cada um com CI/CD e regras de proteção próprias. Este repositório é a **aplicação principal**; os outros três são:
+O sistema é composto por 8 repositórios, cada um com CI/CD e regras de proteção próprias: 5 microsserviços ([RFC-0006](docs/rfcs/0006-decomposicao-em-microsservicos.md), contrato entre eles em [`docs/saga.md`](docs/saga.md)) e 3 repositórios de plataforma compartilhada por todos eles.
 
-| Repositório | Papel | Status |
+| Repositório | Papel | Tecnologia principal |
 |---|---|---|
-| [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Infraestrutura do Banco de Dados Gerenciado (Terraform, RDS PostgreSQL) | Implementado |
-| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Infraestrutura Kubernetes (Terraform, VPC, EKS, ECR, add-ons) | Implementado |
-| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Function Serverless de autenticação via CPF | Implementado |
+| [oficina-mecanica-fiap](https://github.com/phantosmia/oficina-mecanica-fiap) (este) | Microsserviço **OS Service**: clientes, veículos, ordens de serviço e orquestrador da saga | FastAPI + PostgreSQL |
+| [oficina-mecanica-catalogo](https://github.com/phantosmia/oficina-mecanica-catalogo) | Microsserviço **Catálogo**: serviços e fichas de peças (consultado por REST síncrono, fora da saga) | FastAPI + DynamoDB |
+| [oficina-mecanica-estoque](https://github.com/phantosmia/oficina-mecanica-estoque) | Microsserviço **Estoque**: saldo e reservas de peças (participante da saga) | FastAPI + PostgreSQL |
+| [oficina-mecanica-orcamento-pagamento](https://github.com/phantosmia/oficina-mecanica-orcamento-pagamento) | Microsserviço **Orçamento & Pagamento**: orçamento, aprovação e pagamento via Mercado Pago (participante da saga) | FastAPI + PostgreSQL |
+| [oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao) | Microsserviço **Execução**: fila de execução, diagnóstico e reparo (participante da saga) | FastAPI + DynamoDB |
+| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Plataforma: autenticação via CPF e API Gateway | AWS Lambda + Terraform |
+| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Plataforma: VPC, cluster EKS, ECR e add-ons | Terraform |
+| [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Plataforma: VPC de banco e RDS PostgreSQL | Terraform |
 
 ## Visão geral
 

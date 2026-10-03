@@ -55,3 +55,12 @@ Critérios usados no corte:
 - **Negativas**: perde-se a atomicidade do banco único. A aprovação, que antes decrementava o estoque e mudava o status numa transação só, agora exige uma saga com compensações. Consultas que cruzam domínios (por exemplo, "OS com os nomes das peças") passam a depender dos snapshots gravados na própria OS, sem join.
 - **Operacionais**: cinco pipelines, cinco deploys, três instâncias RDS e duas tabelas DynamoDB para reprovisionar a cada rotação do AWS Academy Lab. Para limitar o custo, as instâncias RDS usam a menor classe disponível no Lab, e as tabelas DynamoDB usam cobrança sob demanda.
 - **Em aberto**: extrair o orquestrador para um serviço próprio, caso o número de sagas cresça (ver ADR-0008).
+
+## Revisão (2026-10-03): quem consulta o Catálogo
+
+Com a [ADR-0010](../adrs/0010-diagnostico-define-o-orcamento.md), os serviços e peças da OS deixam de ser informados na abertura e passam a ser escolhidos pelo mecânico no diagnóstico, dentro da Execução. Com isso, dois pontos desta RFC mudam:
+
+- **Quem consulta o Catálogo por REST síncrono é a Execução**, ao concluir o diagnóstico, e não o OS Service na abertura da OS. Continua sendo uma leitura sem efeito colateral, fora da saga, e continua sendo o caso de "REST síncrono quando necessário": o mecânico precisa da resposta na hora, e item inexistente ou desativado vira erro imediato na tela do diagnóstico.
+- **O snapshot de preços é copiado pela Execução**, que o envia no evento `DiagnosticoConcluido`. O orçamento é gerado a partir dessa cópia.
+
+A divisão em 5 serviços e os critérios de corte não mudam.

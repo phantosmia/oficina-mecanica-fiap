@@ -5,27 +5,27 @@ Checklist vivo do que falta pra fechar os requisitos dos PDFs da Fase 4 (`SOAT -
 
 # Fase 4: microsserviços com Saga Pattern
 
-Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
+Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos), [ADR-0010](adrs/0010-diagnostico-define-o-orcamento.md) (diagnóstico define o orçamento) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
 
 ## 1. Desenho e documentação de decisões
 
-- [x] RFCs 0006/0007, ADRs 0008/0009 e `docs/saga.md` (ADR-0001 marcada como substituída).
+- [x] RFCs 0006/0007, ADRs 0008/0009/0010 e `docs/saga.md` (ADR-0001 marcada como substituída; ADR-0008 parcialmente substituída pela 0010).
 - [x] Criar os 4 repositórios novos no GitHub (`oficina-mecanica-catalogo`, `oficina-mecanica-estoque`, `oficina-mecanica-orcamento-pagamento`, `oficina-mecanica-execucao`), públicos e vazios. Convite ao `soat-architecture` (`write`) **enviado** nos 4; aceite pendente.
 - [x] Tabela de repositórios do `CLAUDE.md` (local, não versionado) atualizada.
-- [ ] Seção "Repositórios" do `README.md` com os 4 novos (fazer junto da refatoração do OS Service, quando o README for reescrito para a Fase 4).
+- [x] Seção "Repositórios do projeto" do `README.md` com os 8 repositórios numa tabela só (5 microsserviços + 3 de plataforma), organizada pelo papel atual de cada um, não pela fase em que surgiu.
 
 ## 2. Serviços novos (cada um: Clean Architecture, testes unitários com cobertura ≥ 80%, Dockerfile, manifestos Kubernetes, Swagger)
 
-- [ ] **Catálogo** (DynamoDB): extrair `app/service_catalog` e `app/parts` (só a ficha da peça, sem saldo); endpoint de consulta em lote usado pelo OS Service na abertura; publica `PecaCadastrada`.
+- [x] **Catálogo** (DynamoDB): [PR #1 do `oficina-mecanica-catalogo`](https://github.com/phantosmia/oficina-mecanica-catalogo/pull/1): CRUD de serviços e peças (atributos por tipo), `POST /catalog/lookup` para a Execução, `PecaCadastrada` via outbox + relay SNS, 39 testes (moto, 96,9%), Dockerfile, docker-compose com LocalStack, manifests Kubernetes e CI básico (testes, build, kustomize). Validado manualmente no LocalStack. Falta o que é das etapas 5 e 6 (SonarCloud, deploy, Terraform). Os IDs dos dados de exemplo são UUID v5 (`scripts/seed.py`): o Estoque deve usar a mesma regra para semear o saldo.
 - [ ] **Estoque** (PostgreSQL): saldo por peça, entrada de estoque, `ReservarPecas`/`ConfirmarBaixa`/`LiberarPecas`/`DevolverPecas`; consome `PecaCadastrada`.
-- [ ] **Execução** (DynamoDB): fila de execução, `EnfileirarExecucao`, endpoints para o mecânico registrar diagnóstico/reparo/finalização (publicando os eventos correspondentes).
+- [ ] **Execução** (DynamoDB): filas de diagnóstico e de reparo (`EnfileirarDiagnostico`, `EnfileirarReparo`), endpoints para o mecânico iniciar/concluir o diagnóstico (escolhendo serviços e peças, validados no Catálogo por REST) e registrar reparo/finalização, publicando os eventos correspondentes.
 - [ ] **Orçamento & Pagamento** (PostgreSQL): `GerarOrcamento` + e-mail com link (o token de aprovação passa a ser gerado e validado aqui, não mais no OS Service), aprovação/recusa pública por token, `CriarCobranca` via Mercado Pago + webhook, `EstornarPagamento`, `CancelarOrcamento`. **Depende da usuária**: conta de desenvolvedor e *access token* de teste do Mercado Pago.
 
 ## 3. OS Service (este repositório)
 
 - [ ] Remover `app/service_catalog` e `app/parts` (e as tabelas, via migration) depois que o Catálogo e o Estoque estiverem prontos.
 - [ ] Módulo `app/saga/`: tabela `sagas`, máquina de estados, outbox + publicador, consumidor de `os-saga-eventos`, tarefa periódica de prazos.
-- [ ] Nova máquina de status da OS (`aguardando_pagamento`, `cancelada`; diagnóstico depois do pagamento) e atualização de `docs/regras-negocio.md`/`docs/api.md`.
+- [ ] Abertura da OS sem itens (só cliente, veículo e problema; itens vêm do diagnóstico) e nova máquina de status (`aguardando_pagamento`, `cancelada`), com atualização de `docs/regras-negocio.md`/`docs/api.md`.
 - [ ] Remover o fluxo de aprovação/envio de orçamento daqui (vai para Orçamento & Pagamento).
 
 ## 4. Integração e testes ponta a ponta

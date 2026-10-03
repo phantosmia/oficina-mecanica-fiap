@@ -15,8 +15,9 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 | [0005](0005-lambda-auth-na-vpc-do-banco.md) | Lambda de autenticação implantada na VPC do banco de dados | Aceito |
 | [0006](0006-alb-interno-vpc-link.md) | ALB interno + VPC Link como único ponto de entrada público | Aceito |
 | [0007](0007-new-relic-como-plataforma-de-observabilidade.md) | New Relic como plataforma de observabilidade | Aceito |
-| [0008](0008-saga-orquestrada-no-os-service.md) | Saga orquestrada, com o orquestrador dentro do OS Service | Aceito |
+| [0008](0008-saga-orquestrada-no-os-service.md) | Saga orquestrada, com o orquestrador dentro do OS Service | Aceito; fluxo substituído pela [ADR-0010](0010-diagnostico-define-o-orcamento.md) |
 | [0009](0009-persistencia-poliglota-por-servico.md) | Persistência poliglota, com um banco por serviço | Aceito |
+| [0010](0010-diagnostico-define-o-orcamento.md) | O diagnóstico define o orçamento | Aceito |
 
 ## Template
 

@@ -39,3 +39,5 @@ Detalhes que valem para todos:
 - Os serviços com DynamoDB não usam Alembic: o schema é só a chave primária e os índices, definidos no Terraform. A validação do formato dos documentos fica no domínio do serviço.
 - Sem transações entre serviços, a consistência entre os bancos é **eventual** e coordenada pela saga. Por exemplo, uma OS pode aparecer como `aguardando_pagamento` alguns instantes antes de o Orçamento & Pagamento registrar a cobrança.
 - O custo do AWS Academy Lab sobe com três instâncias RDS em vez de uma. Elas usam a menor classe disponível; as tabelas DynamoDB não têm custo fixo.
+
+> **Nota (2026-10-03):** com a [ADR-0010](0010-diagnostico-define-o-orcamento.md), quem consulta os preços do Catálogo é a Execução, a cada diagnóstico concluído, e não mais a abertura da OS. O perfil de acesso (muita leitura por chave, pouca escrita) e a escolha do DynamoDB não mudam.

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Aceito |
+| **Status** | Aceito; fluxo da saga e máquina de status da OS **substituídos pela [ADR-0010](0010-diagnostico-define-o-orcamento.md)** |
 | **Data** | 2026-10-03 |
 
 ## Contexto
