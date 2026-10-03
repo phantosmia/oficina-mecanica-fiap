@@ -1,6 +1,58 @@
-# Próximos passos — Fase 3
+# Próximos passos
 
-Checklist vivo do que falta pra fechar os requisitos do PDF da Fase 3 (`13SOAT - Fase 3 - Tech Challenge.pdf`, na raiz do repo). Diferente de `docs/sessoes/` (log histórico, um arquivo por sessão, nunca reescrito), este arquivo é **atualizado in-place**: marque itens como feitos, apague o que não se aplica mais, adicione o que surgir. Ver também "Continuidade entre sessões" no `CLAUDE.md`.
+Checklist vivo do que falta pra fechar os requisitos dos PDFs da Fase 4 (`SOAT - Fase 4 - Tech challenge.pdf`) e da Fase 3 (`13SOAT - Fase 3 - Tech Challenge.pdf`), ambos na raiz do repo. Diferente de `docs/sessoes/` (log histórico, um arquivo por sessão, nunca reescrito), este arquivo é **atualizado in-place**: marque itens como feitos, apague o que não se aplica mais, adicione o que surgir. Ver também "Continuidade entre sessões" no `CLAUDE.md`.
+
+
+# Fase 4: microsserviços com Saga Pattern
+
+Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservicos.md) (5 serviços), [RFC-0007](rfcs/0007-mensageria-sqs-sns.md) (SQS + SNS), [ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md) (saga orquestrada no OS Service), [ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md) (bancos) e o contrato das mensagens em [`saga.md`](saga.md). A ordem abaixo é a sugerida: cada etapa depende das anteriores.
+
+## 1. Desenho e documentação de decisões
+
+- [x] RFCs 0006/0007, ADRs 0008/0009 e `docs/saga.md` (ADR-0001 marcada como substituída).
+- [x] Criar os 4 repositórios novos no GitHub (`oficina-mecanica-catalogo`, `oficina-mecanica-estoque`, `oficina-mecanica-orcamento-pagamento`, `oficina-mecanica-execucao`), públicos e vazios. Convite ao `soat-architecture` (`write`) **enviado** nos 4; aceite pendente.
+- [x] Tabela de repositórios do `CLAUDE.md` (local, não versionado) atualizada.
+- [ ] Seção "Repositórios" do `README.md` com os 4 novos (fazer junto da refatoração do OS Service, quando o README for reescrito para a Fase 4).
+
+## 2. Serviços novos (cada um: Clean Architecture, testes unitários com cobertura ≥ 80%, Dockerfile, manifestos Kubernetes, Swagger)
+
+- [ ] **Catálogo** (DynamoDB): extrair `app/service_catalog` e `app/parts` (só a ficha da peça, sem saldo); endpoint de consulta em lote usado pelo OS Service na abertura; publica `PecaCadastrada`.
+- [ ] **Estoque** (PostgreSQL): saldo por peça, entrada de estoque, `ReservarPecas`/`ConfirmarBaixa`/`LiberarPecas`/`DevolverPecas`; consome `PecaCadastrada`.
+- [ ] **Execução** (DynamoDB): fila de execução, `EnfileirarExecucao`, endpoints para o mecânico registrar diagnóstico/reparo/finalização (publicando os eventos correspondentes).
+- [ ] **Orçamento & Pagamento** (PostgreSQL): `GerarOrcamento` + e-mail com link (o token de aprovação passa a ser gerado e validado aqui, não mais no OS Service), aprovação/recusa pública por token, `CriarCobranca` via Mercado Pago + webhook, `EstornarPagamento`, `CancelarOrcamento`. **Depende da usuária**: conta de desenvolvedor e *access token* de teste do Mercado Pago.
+
+## 3. OS Service (este repositório)
+
+- [ ] Remover `app/service_catalog` e `app/parts` (e as tabelas, via migration) depois que o Catálogo e o Estoque estiverem prontos.
+- [ ] Módulo `app/saga/`: tabela `sagas`, máquina de estados, outbox + publicador, consumidor de `os-saga-eventos`, tarefa periódica de prazos.
+- [ ] Nova máquina de status da OS (`aguardando_pagamento`, `cancelada`; diagnóstico depois do pagamento) e atualização de `docs/regras-negocio.md`/`docs/api.md`.
+- [ ] Remover o fluxo de aprovação/envio de orçamento daqui (vai para Orçamento & Pagamento).
+
+## 4. Integração e testes ponta a ponta
+
+- [ ] `docker-compose` com os 5 serviços + LocalStack (SQS, SNS, DynamoDB) + PostgreSQLs.
+- [ ] **BDD** (`pytest-bdd`): fluxo feliz completo e pelo menos um fluxo com compensação.
+
+## 5. CI/CD e qualidade (em cada um dos 5 repositórios)
+
+- [ ] Pipeline independente: build, testes, SonarCloud, deploy no EKS. **Depende da usuária**: login no SonarCloud com a organização `phantosmia` e token.
+- [ ] Proteção da branch `main` (PR obrigatório + checagens obrigatórias).
+- [ ] Evidência de cobertura no README (badge do SonarCloud ou print).
+
+## 6. Infraestrutura
+
+- [ ] Terraform de cada serviço: filas SQS + DLQs, tópico SNS, assinaturas, RDS (dentro da VPC de banco existente, sem VPC nova) ou tabela DynamoDB. Confirmar no Lab que DynamoDB/SQS/SNS estão liberados.
+- [ ] Atualizar o diagrama de dependência entre repositórios Terraform (`docs/arquitetura.md`).
+- [ ] Observabilidade: APM do New Relic nos 5 serviços, propagação de *trace context* nas mensagens e `order_id`/`saga_id` nos logs estruturados.
+
+## 7. Entregáveis da Fase 4
+
+- [ ] Diagrama geral da arquitetura final (microsserviços, bancos, comunicação).
+- [ ] README de cada repositório: arquitetura do serviço, justificativa da saga (no do OS Service), link para Swagger/Postman e evidência de cobertura.
+- [ ] Vídeo (até 15 min): fluxo completo, saga com falha e compensação, deploy automatizado com testes, monitoramento/rastreamento distribuído.
+- [ ] PDF de entrega: participantes, links dos repositórios, link do vídeo, diagrama, estratégia de saga, justificativa da divisão e das tecnologias.
+
+# Fase 3 (pendências ainda abertas)
 
 ## Documentação da arquitetura (exigência explícita do PDF)
 

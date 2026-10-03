@@ -13,6 +13,8 @@ Uma RFC pode ser revisitada se o contexto mudar (por exemplo, migrar de AWS Acad
 | [0003](0003-estrategia-de-autenticacao.md) | Estratégia de autenticação | Aceito |
 | [0004](0004-escolha-do-api-gateway.md) | Escolha da solução de API Gateway | Aceito |
 | [0005](0005-escolha-da-ferramenta-de-monitoramento.md) | Escolha da ferramenta de monitoramento | Aceito |
+| [0006](0006-decomposicao-em-microsservicos.md) | Decomposição em microsserviços (Fase 4) | Aceito |
+| [0007](0007-mensageria-sqs-sns.md) | Mensageria entre microsserviços (SQS + SNS) | Aceito |
 
 ## Template
 
