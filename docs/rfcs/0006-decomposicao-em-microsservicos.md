@@ -64,3 +64,7 @@ Com a [ADR-0010](../adrs/0010-diagnostico-define-o-orcamento.md), os serviços e
 - **O snapshot de preços é copiado pela Execução**, que o envia no evento `DiagnosticoConcluido`. O orçamento é gerado a partir dessa cópia.
 
 A divisão em 5 serviços e os critérios de corte não mudam.
+
+## Revisão (2026-10-03): Orçamento e Pagamento separados
+
+A [RFC-0008](0008-separacao-orcamento-e-pagamento.md) separou **Orçamento & Pagamento** em dois microsserviços: **Orçamento** (`oficina-mecanica-orcamento`, DynamoDB) e **Pagamento** (`oficina-mecanica-pagamento`, PostgreSQL). O sistema passa a ter 6 microsserviços. Os critérios de corte desta RFC continuam valendo; foi justamente o critério "ciclos de vida distintos" aplicado de novo, agora entre a regra de orçamento da oficina e a integração com o provedor de pagamento.

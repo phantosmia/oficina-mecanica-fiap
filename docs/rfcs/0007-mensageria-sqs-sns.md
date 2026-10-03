@@ -106,3 +106,7 @@ flowchart LR
     Catalogo[Catálogo] --> TC --> QEC --> Estoque
     Execucao -. REST síncrono<br/>ao concluir o diagnóstico .-> Catalogo
 ```
+
+## Revisão (2026-10-03): filas de Orçamento e de Pagamento
+
+Com a [RFC-0008](0008-separacao-orcamento-e-pagamento.md), a fila `orcamento-pagamento-comandos` e o tópico `orcamento-pagamento-eventos` dos diagramas acima viram dois pares: `orcamento-comandos`/`orcamento-eventos` e `pagamento-comandos`/`pagamento-eventos`. O orquestrador assina os dois tópicos novos com a mesma fila `os-saga-eventos`. Nenhuma regra desta RFC muda.
