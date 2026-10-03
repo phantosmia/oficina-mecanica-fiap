@@ -54,8 +54,10 @@ flowchart LR
     QX --> Execucao[Execução] --> TX
     TE & TO & TX --> QS --> OS
     Catalogo[Catálogo] --> TC --> QEC --> Estoque
+    Execucao -. REST síncrono<br/>ao concluir o diagnóstico .-> Catalogo
 ```
 
+- **A linha tracejada não é mensageria**: é a consulta REST síncrona que a Execução faz ao Catálogo quando o mecânico conclui o diagnóstico ([RFC-0006](0006-decomposicao-em-microsservicos.md)). Aparece aqui só para o diagrama mostrar todas as dependências entre os serviços.
 - **Cada participante tem uma fila de comandos** (`<servico>-comandos`), consumida só por ele.
 - **Cada serviço que publica eventos tem um tópico SNS** (`<servico>-eventos`). Quem tem interesse assina o tópico com uma fila própria: o orquestrador assina os tópicos de Estoque, Orçamento & Pagamento e Execução com a fila `os-saga-eventos`; o Estoque assina o tópico do Catálogo. O publicador não sabe quem consome.
 - **Toda fila tem uma DLQ** (`<fila>-dlq`), para onde a mensagem vai depois de 5 tentativas de processamento sem sucesso.
