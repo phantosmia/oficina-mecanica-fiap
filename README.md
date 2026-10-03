@@ -35,29 +35,18 @@ Os detalhes foram separados em artigos complementares para manter este README en
 
 ## Repositórios do projeto
 
-O projeto é composto por 8 repositórios, cada um com CI/CD e regras de proteção próprias. Este repositório é a **aplicação principal** e, a partir da Fase 4, passa a ser o **OS Service**, que hospeda o orquestrador da saga.
+O sistema é composto por 8 repositórios, cada um com CI/CD e regras de proteção próprias: 5 microsserviços ([RFC-0006](docs/rfcs/0006-decomposicao-em-microsservicos.md), contrato entre eles em [`docs/saga.md`](docs/saga.md)) e 3 repositórios de plataforma compartilhada por todos eles.
 
-### Fase 3: plataforma compartilhada
-
-Infraestrutura e autenticação criadas na Fase 3. Na Fase 4 elas continuam em uso por todos os microsserviços ([RFC-0006](docs/rfcs/0006-decomposicao-em-microsservicos.md)).
-
-| Repositório | Papel | Status |
+| Repositório | Papel | Tecnologia principal |
 |---|---|---|
-| [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Infraestrutura do Banco de Dados Gerenciado (Terraform, RDS PostgreSQL) | Implementado |
-| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Infraestrutura Kubernetes (Terraform, VPC, EKS, ECR, add-ons) | Implementado |
-| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Function Serverless de autenticação via CPF | Implementado |
-
-### Fase 4: microsserviços
-
-Divisão e justificativa em [RFC-0006](docs/rfcs/0006-decomposicao-em-microsservicos.md); contrato entre os serviços em [`docs/saga.md`](docs/saga.md).
-
-| Repositório | Papel | Banco | Status |
-|---|---|---|---|
-| [oficina-mecanica-fiap](https://github.com/phantosmia/oficina-mecanica-fiap) (este) | OS Service: clientes, veículos, ordens de serviço e orquestrador da saga | PostgreSQL | Em refatoração |
-| [oficina-mecanica-catalogo](https://github.com/phantosmia/oficina-mecanica-catalogo) | Catálogo de serviços e fichas de peças (consultado por REST síncrono, fora da saga) | DynamoDB | Em desenvolvimento |
-| [oficina-mecanica-estoque](https://github.com/phantosmia/oficina-mecanica-estoque) | Saldo e reservas de peças (participante da saga) | PostgreSQL | Em desenvolvimento |
-| [oficina-mecanica-orcamento-pagamento](https://github.com/phantosmia/oficina-mecanica-orcamento-pagamento) | Orçamento, aprovação e pagamento via Mercado Pago (participante da saga) | PostgreSQL | Em desenvolvimento |
-| [oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao) | Fila de execução, diagnóstico e reparo (participante da saga) | DynamoDB | Em desenvolvimento |
+| [oficina-mecanica-fiap](https://github.com/phantosmia/oficina-mecanica-fiap) (este) | Microsserviço **OS Service**: clientes, veículos, ordens de serviço e orquestrador da saga | FastAPI + PostgreSQL |
+| [oficina-mecanica-catalogo](https://github.com/phantosmia/oficina-mecanica-catalogo) | Microsserviço **Catálogo**: serviços e fichas de peças (consultado por REST síncrono, fora da saga) | FastAPI + DynamoDB |
+| [oficina-mecanica-estoque](https://github.com/phantosmia/oficina-mecanica-estoque) | Microsserviço **Estoque**: saldo e reservas de peças (participante da saga) | FastAPI + PostgreSQL |
+| [oficina-mecanica-orcamento-pagamento](https://github.com/phantosmia/oficina-mecanica-orcamento-pagamento) | Microsserviço **Orçamento & Pagamento**: orçamento, aprovação e pagamento via Mercado Pago (participante da saga) | FastAPI + PostgreSQL |
+| [oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao) | Microsserviço **Execução**: fila de execução, diagnóstico e reparo (participante da saga) | FastAPI + DynamoDB |
+| [oficina-mecanica-lambda-auth](https://github.com/phantosmia/oficina-mecanica-lambda-auth) | Plataforma: autenticação via CPF e API Gateway | AWS Lambda + Terraform |
+| [oficina-mecanica-infra-kubernetes](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes) | Plataforma: VPC, cluster EKS, ECR e add-ons | Terraform |
+| [oficina-mecanica-infra-banco-dados](https://github.com/phantosmia/oficina-mecanica-infra-banco-dados) | Plataforma: VPC de banco e RDS PostgreSQL | Terraform |
 
 ## Visão geral
 
