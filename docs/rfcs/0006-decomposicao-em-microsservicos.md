@@ -41,11 +41,11 @@ Critérios usados no corte:
 
 - **Dono do dado = dono da regra.** Quem decide se há estoque é quem guarda o estoque; quem decide se o pagamento foi aprovado é quem conversa com o Mercado Pago. Nenhuma regra de negócio depende de ler o banco de outro serviço.
 - **Ciclos de vida distintos.** Cadastro (catálogo), saldo (estoque), dinheiro (orçamento/pagamento), operação de chão de oficina (execução) e o agregado central (OS) mudam por motivos e em ritmos diferentes.
-- **Snapshot em vez de referência viva.** A regra das fases anteriores, de gravar `unit_price`/`subtotal` na criação da OS para auditoria, já tornava a OS independente de mudanças futuras de preço. Na Fase 4 ela vira o contrato entre os serviços: o OS Service copia os preços do Catálogo na abertura, e o orçamento é gerado a partir dessa cópia.
+- **Snapshot em vez de referência viva.** A regra das fases anteriores, de gravar `unit_price`/`subtotal` na criação da OS para auditoria, já tornava a OS independente de mudanças futuras de preço. Na Fase 4 ela vira o contrato entre os serviços: a Execução copia os preços do Catálogo quando o mecânico conclui o diagnóstico, e o orçamento é gerado a partir dessa cópia.
 
 ### Como os serviços se integram
 
-- **Catálogo fora da saga, via REST síncrono.** Na abertura da OS, o OS Service consulta o Catálogo para validar os serviços e peças pedidos e copiar os preços. É uma leitura sem efeito colateral, então não há o que compensar, e o cliente da API precisa da resposta na hora: item inexistente continua resultando em 404 imediato, como nas fases anteriores. É o caso de "REST síncrono quando necessário" previsto no PDF.
+- **Catálogo fora da saga, via REST síncrono.** Ao concluir o diagnóstico, o mecânico informa à Execução quais serviços e peças a OS precisa. A Execução consulta o Catálogo para validar esses itens e copiar os preços antes de aceitar o diagnóstico. É uma leitura sem efeito colateral, então não há o que compensar, e o mecânico precisa da resposta na hora: item inexistente ou desativado resulta em erro imediato na própria tela do diagnóstico. É o caso de "REST síncrono quando necessário" previsto no PDF.
 - **Estoque, Orçamento & Pagamento e Execução como participantes da saga, via mensageria.** Esses passos têm efeito colateral (reservar saldo, cobrar, enfileirar) e precisam de compensação em caso de falha. Ver [ADR-0008](../adrs/0008-saga-orquestrada-no-os-service.md) e [RFC-0007](0007-mensageria-sqs-sns.md).
 - **Catálogo → Estoque por evento.** Quando uma peça é cadastrada no Catálogo, ele publica `PecaCadastrada`; o Estoque reage criando o saldo zerado daquela peça. O Estoque nunca consulta o banco do Catálogo.
 

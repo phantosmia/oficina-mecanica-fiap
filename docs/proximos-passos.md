@@ -16,16 +16,16 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 ## 2. Serviços novos (cada um: Clean Architecture, testes unitários com cobertura ≥ 80%, Dockerfile, manifestos Kubernetes, Swagger)
 
-- [ ] **Catálogo** (DynamoDB): extrair `app/service_catalog` e `app/parts` (só a ficha da peça, sem saldo); endpoint de consulta em lote usado pelo OS Service na abertura; publica `PecaCadastrada`.
+- [ ] **Catálogo** (DynamoDB): extrair `app/service_catalog` e `app/parts` (só a ficha da peça, sem saldo); endpoint de consulta em lote usado pela Execução ao concluir o diagnóstico; publica `PecaCadastrada`.
 - [ ] **Estoque** (PostgreSQL): saldo por peça, entrada de estoque, `ReservarPecas`/`ConfirmarBaixa`/`LiberarPecas`/`DevolverPecas`; consome `PecaCadastrada`.
-- [ ] **Execução** (DynamoDB): fila de execução, `EnfileirarExecucao`, endpoints para o mecânico registrar diagnóstico/reparo/finalização (publicando os eventos correspondentes).
+- [ ] **Execução** (DynamoDB): filas de diagnóstico e de reparo (`EnfileirarDiagnostico`, `EnfileirarReparo`), endpoints para o mecânico iniciar/concluir o diagnóstico (escolhendo serviços e peças, validados no Catálogo por REST) e registrar reparo/finalização, publicando os eventos correspondentes.
 - [ ] **Orçamento & Pagamento** (PostgreSQL): `GerarOrcamento` + e-mail com link (o token de aprovação passa a ser gerado e validado aqui, não mais no OS Service), aprovação/recusa pública por token, `CriarCobranca` via Mercado Pago + webhook, `EstornarPagamento`, `CancelarOrcamento`. **Depende da usuária**: conta de desenvolvedor e *access token* de teste do Mercado Pago.
 
 ## 3. OS Service (este repositório)
 
 - [ ] Remover `app/service_catalog` e `app/parts` (e as tabelas, via migration) depois que o Catálogo e o Estoque estiverem prontos.
 - [ ] Módulo `app/saga/`: tabela `sagas`, máquina de estados, outbox + publicador, consumidor de `os-saga-eventos`, tarefa periódica de prazos.
-- [ ] Nova máquina de status da OS (`aguardando_pagamento`, `cancelada`; diagnóstico depois do pagamento) e atualização de `docs/regras-negocio.md`/`docs/api.md`.
+- [ ] Abertura da OS sem itens (só cliente, veículo e problema; itens vêm do diagnóstico) e nova máquina de status (`aguardando_pagamento`, `cancelada`), com atualização de `docs/regras-negocio.md`/`docs/api.md`.
 - [ ] Remover o fluxo de aprovação/envio de orçamento daqui (vai para Orçamento & Pagamento).
 
 ## 4. Integração e testes ponta a ponta

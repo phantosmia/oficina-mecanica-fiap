@@ -29,3 +29,8 @@ Um `git add docs` incluiu os roteiros de vídeo (`docs/roteiro-video*.md`, manti
 - Etapa 2 do checklist da Fase 4 em `docs/proximos-passos.md`: começar pelo **Catálogo** (extração mais simples, código já existe em `app/service_catalog` e `app/parts`).
 - **Dependem da usuária**: conta de desenvolvedor e *access token* de teste do Mercado Pago (antes do serviço de Orçamento & Pagamento) e login no SonarCloud com a organização `phantosmia` + token (antes do CI).
 - Confirmar no AWS Academy Lab que DynamoDB, SQS e SNS estão liberados, assim que houver credenciais válidas.
+
+## Atualização (mesma sessão, depois do merge da PR #35)
+
+- **Diagnóstico define o orçamento (opção B)**: foram apresentadas três opções para onde fica o diagnóstico: (A) depois do pagamento, que era o que estava na PR #35; (B) antes do orçamento, com o mecânico escolhendo serviços e peças; (C) antes do orçamento, mas mantendo os itens informados na abertura, como nas fases anteriores. A recomendação foi C, por ser a menor mudança sobre regras já entregues. A usuária escolheu **B**, a mais fiel ao funcionamento de uma oficina real. Consequências: a abertura da OS deixa de receber itens, a Execução participa duas vezes da saga (`EnfileirarDiagnostico` e `EnfileirarReparo`) e quem consulta o Catálogo por REST passa a ser a Execução, ao concluir o diagnóstico, e não o OS Service. ADR-0008, RFC-0006, ADR-0009 e `docs/saga.md` foram ajustados em uma PR nova.
+- **PR #35 foi mergeada antes dos dois últimos commits** (README com a tabela única de repositórios). Eles foram reaplicados (*cherry-pick*) na mesma PR nova.

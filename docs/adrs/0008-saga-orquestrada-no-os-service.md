@@ -15,11 +15,14 @@ Duas decisões precisavam ser tomadas: **o estilo da saga** e **onde fica o orqu
 
 **Saga orquestrada**, com o orquestrador implementado como um módulo isolado (`app/saga/`) **dentro do OS Service**. O estado de cada saga é persistido numa tabela `sagas` do PostgreSQL do OS Service, e o orquestrador conversa com os participantes (Estoque, Orçamento & Pagamento e Execução) por comandos e eventos via SQS/SNS ([RFC-0007](../rfcs/0007-mensageria-sqs-sns.md)).
 
-O fluxo segue o exemplo do próprio PDF (abrir a OS → gerar orçamento → aguardar aprovação → enviar para execução), com o pagamento entre a aprovação e a execução:
+O fluxo segue o exemplo do próprio PDF (abrir a OS → gerar orçamento → aguardar aprovação → enviar para execução), com duas etapas a mais: o **diagnóstico antes do orçamento**, que é onde o mecânico define quais serviços e peças a OS precisa, e o **pagamento** entre a aprovação e a execução:
 
 ```mermaid
 stateDiagram-v2
-    [*] --> ReservandoPecas: OS aberta
+    [*] --> EnfileirandoDiagnostico: OS aberta
+    EnfileirandoDiagnostico --> AguardandoDiagnostico: DiagnosticoEnfileirado
+    EnfileirandoDiagnostico --> Cancelada: EnfileiramentoFalhou
+    AguardandoDiagnostico --> ReservandoPecas: DiagnosticoConcluido
     ReservandoPecas --> GerandoOrcamento: PecasReservadas
     ReservandoPecas --> Cancelada: ReservaRecusada
     GerandoOrcamento --> AguardandoAprovacao: OrcamentoGerado
@@ -30,18 +33,19 @@ stateDiagram-v2
     GerandoCobranca --> Compensando: CobrancaFalhou
     AguardandoPagamento --> ConfirmandoBaixa: PagamentoConfirmado
     AguardandoPagamento --> Compensando: PagamentoRecusado / prazo expirado
-    ConfirmandoBaixa --> EnfileirandoExecucao: BaixaConfirmada
+    ConfirmandoBaixa --> EnfileirandoReparo: BaixaConfirmada
     ConfirmandoBaixa --> Compensando: BaixaFalhou
-    EnfileirandoExecucao --> EmExecucao: ExecucaoEnfileirada
-    EnfileirandoExecucao --> Compensando: EnfileiramentoFalhou
-    EmExecucao --> Concluida: ExecucaoFinalizada
+    EnfileirandoReparo --> EmReparo: ReparoEnfileirado
+    EnfileirandoReparo --> Compensando: EnfileiramentoFalhou
+    EmReparo --> Concluida: ExecucaoFinalizada
     Compensando --> Cancelada: compensações concluídas
     Concluida --> [*]
     Cancelada --> [*]
 ```
 
+- **Diagnóstico define o orçamento.** A OS é aberta só com o cliente, o veículo e a descrição do problema. A Execução recebe a OS na fila de diagnóstico, o mecânico examina o veículo e registra quais serviços e peças são necessários. A Execução valida esses itens no Catálogo (REST síncrono) e devolve no evento `DiagnosticoConcluido` os itens com os preços copiados. A partir daí a saga reserva as peças e gera o orçamento. O diagnóstico em si não tem compensação: ele não tem efeito colateral sobre outro serviço.
 - **Compensação.** Cada passo com efeito colateral tem uma ação inversa: `LiberarPecas` desfaz `ReservarPecas`, `CancelarOrcamento` desfaz `GerarOrcamento`, `EstornarPagamento` desfaz o pagamento e `DevolverPecas` desfaz `ConfirmarBaixa`. Ao entrar em `Compensando`, o orquestrador dispara as compensações dos passos já concluídos, na ordem inversa, e só marca a saga como `Cancelada` quando todas forem confirmadas.
-- **Ponto sem volta.** `ExecucaoEnfileirada` é o ponto a partir do qual a saga não é mais compensada: as peças começam a ser usadas no veículo. Falhas depois disso (por exemplo, um reparo que não dá certo) são tratadas pela operação da oficina, não por rollback automático.
+- **Ponto sem volta.** `ReparoEnfileirado` é o ponto a partir do qual a saga não é mais compensada: as peças começam a ser usadas no veículo. Falhas depois disso (por exemplo, um reparo que não dá certo) são tratadas pela operação da oficina, não por rollback automático.
 - **Compensações não podem falhar de vez.** Elas são idempotentes e reenviadas até serem confirmadas. Se uma compensação esgotar as tentativas, a mensagem vai para a DLQ e a saga fica em `Compensando`, visível no monitoramento para intervenção manual. Ela nunca é marcada como `Cancelada` sem a confirmação de todas as compensações.
 - **Prazos.** As esperas pelo cliente (aprovação do orçamento, pagamento) e as esperas por resposta de participante têm prazo configurável. Uma tarefa periódica do orquestrador reenvia o comando pendente ou, esgotadas as tentativas, inicia a compensação.
 
@@ -56,5 +60,6 @@ A lista completa de comandos, eventos, compensações e o mapeamento entre o est
 
 - **Positivas**: o fluxo inteiro, incluindo as compensações, está num único módulo testável. O estado de cada saga é consultável (tabela `sagas` + histórico de status da OS) e aparece no rastreio da OS. Os participantes ficam simples: executam um comando e publicam o resultado, sem conhecer o fluxo.
 - **Negativas**: o OS Service concentra a lógica de coordenação, o que o torna o serviço mais complexo e o mais crítico do sistema. Se ele cair, nenhuma saga avança (mas nenhuma se perde, porque as mensagens ficam retidas nas filas e o estado está no banco).
-- **Mudança na máquina de status da OS**: o diagnóstico passa a acontecer depois do pagamento, dentro da Execução, e aparecem os status `aguardando_pagamento` e `cancelada`. O fluxo fica `recebida → aguardando_aprovacao → aguardando_pagamento → em_diagnostico → em_execucao → finalizada → entregue`, com `recusada` e `cancelada` como saídas terminais. `docs/regras-negocio.md` precisa ser atualizado junto com a implementação.
+- **Mudança na abertura e na máquina de status da OS**: os serviços e peças deixam de ser informados na abertura (`POST /service-orders`) e passam a ser definidos no diagnóstico, dentro da Execução. Aparecem os status `aguardando_pagamento` e `cancelada`. O fluxo fica `recebida → em_diagnostico → aguardando_aprovacao → aguardando_pagamento → em_execucao → finalizada → entregue`, com `recusada` e `cancelada` como saídas terminais. `docs/regras-negocio.md` e `docs/api.md` precisam ser atualizados junto com a implementação.
+- **A reserva acontece depois do diagnóstico**: só então se sabe quais peças a OS precisa. Se faltar estoque nesse momento, a OS é cancelada (`ReservaRecusada`). Esperar a reposição do estoque em vez de cancelar fica como evolução possível.
 - **Evolução possível**: se o número de sagas crescer, o módulo `app/saga/` pode ser extraído para um serviço próprio. Ele não importa nada dos outros contextos do OS Service, só se comunica por portas.
