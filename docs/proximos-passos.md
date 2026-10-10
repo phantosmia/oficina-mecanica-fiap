@@ -32,7 +32,7 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 ## 4. Integração e testes ponta a ponta
 
-- [x] `docker-compose.yml` com os 6 serviços (API, worker e relay de cada um) + LocalStack (SQS, SNS, DynamoDB) + Mailpit. **Validado** em 2026-10-10: OS aberta → diagnóstico com itens do Catálogo → reserva no Estoque → orçamento por e-mail → aprovação pela página do link → cobrança criada no **Mercado Pago real**; e duas compensações reais (recusa do orçamento liberando a reserva; estoque insuficiente cancelando a OS).
+- [x] `docker-compose.yml` com os 6 serviços (API, worker e relay de cada um) + LocalStack (SQS, SNS, DynamoDB) + Mailpit. **Validado** em 2026-10-10: OS aberta → diagnóstico com itens do Catálogo → reserva no Estoque → orçamento por e-mail → aprovação pela página do link → cobrança criada no **Mercado Pago real**; e três compensações reais: recusa do orçamento liberando a reserva; estoque insuficiente cancelando a OS; e **prazo de pagamento vencido**, que cancelou a cobrança no Mercado Pago (conferido na API deles), cancelou o orçamento e liberou a reserva, nessa ordem.
 - [x] **BDD** (`pytest-bdd`, Gherkin em português): fluxo completo e três fluxos com compensação (`tests/features/fluxo_ordem_de_servico.feature`).
 - [ ] **Pagamento pelo navegador no sandbox** para fechar o fluxo feliz real (OS → reparo → entrega) e confirmar o efeito de um cartão recusado (`OTHE`). Precisa da usuária (login com o comprador de teste).
 
