@@ -34,24 +34,25 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 - [x] `docker-compose.yml` com os 6 serviços (API, worker e relay de cada um) + LocalStack (SQS, SNS, DynamoDB) + Mailpit. **Validado** em 2026-10-10: OS aberta → diagnóstico com itens do Catálogo → reserva no Estoque → orçamento por e-mail → aprovação pela página do link → cobrança criada no **Mercado Pago real**; e três compensações reais: recusa do orçamento liberando a reserva; estoque insuficiente cancelando a OS; e **prazo de pagamento vencido**, que cancelou a cobrança no Mercado Pago (conferido na API deles), cancelou o orçamento e liberou a reserva, nessa ordem.
 - [x] **BDD** (`pytest-bdd`, Gherkin em português): fluxo completo e três fluxos com compensação (`tests/features/fluxo_ordem_de_servico.feature`).
-- [ ] **Pagamento pelo navegador no sandbox** para fechar o fluxo feliz real (OS → reparo → entrega) e confirmar o efeito de um cartão recusado (`OTHE`). Precisa da usuária (login com o comprador de teste).
+- [x] **Pagamento pelo navegador no sandbox** (2026-10-10, com a usuária): **fluxo feliz real completo** (OS 4: abertura → diagnóstico → reserva → orçamento aprovado pela página do link → pagamento no checkout do Mercado Pago → baixa → reparo → entrega, em ~3,5 min; confirmação veio pelo retorno do comprador). **Cartão recusado** (OS 6, titular `OTHE`): a cobrança vai a `action_required / waiting_retry` (não encerra; o checkout oferece outro meio) e a saga continua aguardando, como esperado; a recusa definitiva é a expiração. Sem nova tentativa, o prazo da saga venceu e ela cancelou a cobrança no Mercado Pago, o orçamento e a reserva. Cartões de teste corretos do Checkout Pro via Orders registrados no README do Pagamento ([oficina-mecanica-pagamento#2](https://github.com/phantosmia/oficina-mecanica-pagamento/pull/2)).
 
 ## 5. CI/CD e qualidade (em cada um dos 6 repositórios)
 
-- [ ] Pipeline independente: build, testes, SonarCloud, deploy no EKS. **Depende da usuária**: login no SonarCloud com a organização `phantosmia` e token.
+- [ ] Pipeline independente: build, testes, SonarCloud, deploy no EKS. **SonarCloud** (decidido em 2026-10-10): gratuito para repositório público, que é o caso dos 6; o plano Free analisa a `main` (análise de PR é limitada). **Depende da usuária**: login no SonarCloud com o GitHub, importar a organização `phantosmia` no plano **Free** (se pedir cartão ou plano pago, parar: alternativa é o SonarQube Community dentro do CI) e gerar um token.
 - [ ] Proteção da branch `main` (PR obrigatório + checagens obrigatórias).
 - [ ] Evidência de cobertura no README (badge do SonarCloud ou print).
 
 ## 6. Infraestrutura
 
-- [ ] Terraform de cada serviço: filas SQS + DLQs, tópico SNS, assinaturas, RDS (dentro da VPC de banco existente, sem VPC nova) ou tabela DynamoDB. Confirmar no Lab que DynamoDB/SQS/SNS estão liberados.
+- [ ] Terraform de cada serviço: filas SQS + DLQs, tópico SNS, assinaturas, RDS (dentro da VPC de banco existente, sem VPC nova), tabela DynamoDB e **repositório ECR** para a imagem (hoje só existe o do `oficina-mecanica-fiap`, criado pelo `infra-kubernetes`, e ainda com o problema de ECR duplo-gerenciado listado na Fase 3). Confirmar no Lab que DynamoDB/SQS/SNS estão liberados. Provisionar sempre via GitHub Actions, nunca Terraform local.
 - [ ] Atualizar o diagrama de dependência entre repositórios Terraform (`docs/arquitetura.md`).
 - [ ] Observabilidade: APM do New Relic nos 6 serviços, propagação de *trace context* nas mensagens e `order_id`/`saga_id` nos logs estruturados.
 
 ## 7. Entregáveis da Fase 4
 
 - [ ] Diagrama geral da arquitetura final (microsserviços, bancos, comunicação).
-- [ ] README de cada repositório: arquitetura do serviço, justificativa da saga (no do OS Service), link para Swagger/Postman e evidência de cobertura.
+- [ ] README de cada repositório: evidência de cobertura (badge do SonarCloud) e link para o Swagger do ambiente deployado. No do OS Service, uma seção que **justifique a escolha da saga** (o PDF pede "documentar a escolha e justificar no README"; hoje o README só aponta para a ADR-0008).
+- [ ] **Coleção Postman** do fluxo completo (abertura, diagnóstico, aprovação, pagamento, reparo, entrega), com variáveis para as URLs dos 6 serviços.
 - [ ] Vídeo (até 15 min): fluxo completo, saga com falha e compensação, deploy automatizado com testes, monitoramento/rastreamento distribuído.
 - [ ] PDF de entrega: participantes, links dos repositórios, link do vídeo, diagrama, estratégia de saga, justificativa da divisão e das tecnologias.
 
