@@ -11,4 +11,4 @@ Ver instrução de uso no `CLAUDE.md` da raiz do repositório ("Continuidade ent
 - [2026-09-01 — Diagramas de sequência e ER (fecha "Documentação da arquitetura")](2026-09-01-diagramas-sequencia-e-er.md)
 - [2026-09-12 — Reprovisiona `homologacao` do zero pra gravar o vídeo](2026-09-12-reprovisiona-ambiente-homologacao.md)
 - [2026-10-03 — Desenho da Fase 4: 5 microsserviços com saga orquestrada](2026-10-03-desenho-fase4-microsservicos.md)
-- [2026-10-10 — Microsserviço de Orçamento](2026-10-10-servico-orcamento.md)
+- [2026-10-10 — Orçamento, Pagamento e o orquestrador da saga](2026-10-10-servico-orcamento.md)
