@@ -253,6 +253,10 @@ class ServiceOrderSaga:
         # Aceito também antes do CobrancaCriada: o cliente pode pagar muito rápido.
         if self.state not in (SagaState.CREATING_CHARGE, SagaState.AWAITING_PAYMENT):
             return self._unexpected("PagamentoConfirmado")
+        if "charge" not in self.data:
+            # O CobrancaCriada ainda não chegou (e, quando chegar, será
+            # ignorado): guarda a cobrança a partir da confirmação.
+            self.data["charge"] = {"charge_id": payload.get("charge_id"), "provider_order_id": payload.get("provider_order_id")}
         command = self._send("ConfirmarBaixa", {}, now, timeouts, next_state=SagaState.CONFIRMING_WITHDRAWAL)
         return Decision(commands=[command], order_change=OrderChange("pagamento confirmado", None, {"paid_at": now}))
 

@@ -105,9 +105,25 @@ def test_out_of_order_diagnosis_events_are_accepted() -> None:
 
 
 def test_payment_before_charge_created_is_accepted() -> None:
+    """O PagamentoConfirmado só é publicado depois de o Pagamento ver a cobrança
+    paga no Mercado Pago: se ele chegou antes do CobrancaCriada (fila sem ordem
+    garantida), a cobrança existe e foi paga. Recusar o evento faria a saga
+    esperar um pagamento que já aconteceu e, no prazo, estornar o cliente."""
     saga = new_saga()
     advance(saga, "OrcamentoAprovado")
-    assert saga.handle("PagamentoConfirmado", {}, T0, TIMEOUTS).commands[0].type == "ConfirmarBaixa"
+
+    decision = saga.handle("PagamentoConfirmado", {"charge_id": "c-1", "provider_order_id": "ORD1"}, T0, TIMEOUTS)
+
+    assert decision.commands[0].type == "ConfirmarBaixa"
+    assert saga.data["charge"] == {"charge_id": "c-1", "provider_order_id": "ORD1"}
+    assert saga.handle("CobrancaCriada", {"charge_id": "c-1", "checkout_url": "https://mp/x"}, T0, TIMEOUTS).ignored
+
+
+def test_charge_data_kept_when_events_arrive_in_order() -> None:
+    saga = new_saga()
+    advance(saga, "CobrancaCriada")
+    saga.handle("PagamentoConfirmado", {"charge_id": "c-1"}, T0, TIMEOUTS)
+    assert saga.data["charge"] == {"charge_id": "c-1", "checkout_url": "https://mp/x"}
 
 
 def test_unexpected_and_late_events_are_ignored() -> None:
