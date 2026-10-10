@@ -1,34 +1,41 @@
 from datetime import UTC, datetime
+from typing import Any
 
 from sqlalchemy import case, func, select
 from sqlalchemy.orm import Session, joinedload, selectinload
 
-from app.shared.models import (
-    CatalogService as CatalogServiceORM,
-    Client as ClientORM,
-    Part as PartORM,
-    ServiceOrder as ServiceOrderORM,
-    ServiceOrderPart,
-    ServiceOrderService,
-    Vehicle as VehicleORM,
-)
+from app.shared.models import Client as ClientORM
+from app.shared.models import ServiceOrder as ServiceOrderORM
+from app.shared.models import ServiceOrderItem as ServiceOrderItemORM
+from app.shared.models import ServiceOrderStatusHistory as StatusHistoryORM
+from app.shared.models import Vehicle as VehicleORM
 from app.service_orders.domain.entities import (
     AverageExecutionTimeData,
-    CatalogServiceRef,
     ClientRef,
-    PartItemEntity,
-    PartItemInput,
-    PartRef,
-    ServiceItemEntity,
-    ServiceItemInput,
+    OrderItem,
     ServiceOrderEntity,
+    StatusChange,
     VehicleRef,
 )
 from app.service_orders.domain.repository import IServiceOrderRepository
-from app.service_orders.domain.value_objects import ServiceOrderStatus
+from app.service_orders.domain.value_objects import INACTIVE_STATUSES, ServiceOrderStatus
+
+# Colunas da OS que a saga pode atualizar (OrderChange.fields), além dos itens.
+_UPDATABLE_FIELDS = {
+    "diagnosis_notes", "labor_total", "parts_total", "quote_total",
+    "quote_sent_at", "approved_at", "paid_at", "started_at", "finished_at", "delivered_at", "cancelled_at",
+}
 
 
-def _to_entity(orm: ServiceOrderORM, *, include_items: bool = True) -> ServiceOrderEntity:
+def _naive_utc(value: Any) -> Any:
+    # As colunas *_at da OS são `DateTime` sem fuso (herança das fases
+    # anteriores): grava sempre em UTC, sem tzinfo.
+    if isinstance(value, datetime) and value.tzinfo is not None:
+        return value.astimezone(UTC).replace(tzinfo=None)
+    return value
+
+
+def _to_entity(orm: ServiceOrderORM) -> ServiceOrderEntity:
     return ServiceOrderEntity(
         id=orm.id,
         client_id=orm.client_id,
@@ -39,254 +46,126 @@ def _to_entity(orm: ServiceOrderORM, *, include_items: bool = True) -> ServiceOr
         labor_total=orm.labor_total,
         parts_total=orm.parts_total,
         quote_total=orm.quote_total,
-        quote_token=orm.quote_token,
         client_name=orm.client.name,
         client_document_number=orm.client.document_number or "",
         client_email=orm.client.email,
         vehicle_plate=orm.vehicle.license_plate,
+        vehicle_brand=orm.vehicle.brand,
         vehicle_model=orm.vehicle.model,
+        vehicle_year=orm.vehicle.year,
         created_at=orm.created_at,
         updated_at=orm.updated_at,
         quote_sent_at=orm.quote_sent_at,
         approved_at=orm.approved_at,
+        paid_at=orm.paid_at,
         started_at=orm.started_at,
         finished_at=orm.finished_at,
         delivered_at=orm.delivered_at,
-        service_items=[
-            ServiceItemEntity(
-                service_id=item.service_id,
-                name=item.service.name,
-                quantity=item.quantity,
-                unit_price=item.unit_price,
-                subtotal=item.subtotal,
-            )
-            for item in orm.service_items
-        ] if include_items else [],
-        part_items=[
-            PartItemEntity(
-                part_id=item.part_id,
-                name=item.part.name,
-                sku=item.part.sku,
-                quantity=item.quantity,
-                unit_price=item.unit_price,
-                subtotal=item.subtotal,
-            )
-            for item in orm.part_items
-        ] if include_items else [],
+        cancelled_at=orm.cancelled_at,
+        items=[OrderItem(i.kind, i.item_id, i.name, i.quantity, i.unit_price, i.subtotal) for i in orm.items],
+        status_history=[StatusChange(h.from_status, h.to_status, h.reason, h.created_at) for h in orm.status_history],
     )
 
 
-def _load_full(session: Session, order_id: int) -> ServiceOrderORM | None:
-    stmt = (
-        select(ServiceOrderORM)
-        .options(
-            joinedload(ServiceOrderORM.client),
-            joinedload(ServiceOrderORM.vehicle),
-            selectinload(ServiceOrderORM.service_items).joinedload(ServiceOrderService.service),
-            selectinload(ServiceOrderORM.part_items).joinedload(ServiceOrderPart.part),
-        )
-        .where(ServiceOrderORM.id == order_id)
+def _query():  # noqa: ANN202
+    return select(ServiceOrderORM).options(
+        joinedload(ServiceOrderORM.client),
+        joinedload(ServiceOrderORM.vehicle),
+        selectinload(ServiceOrderORM.items),
+        selectinload(ServiceOrderORM.status_history),
     )
-    return session.execute(stmt).unique().scalar_one_or_none()
 
 
 class SqlAlchemyServiceOrderRepository(IServiceOrderRepository):
     def __init__(self, session: Session) -> None:
         self._session = session
 
-    # ── cross-domain lookups ──────────────────────────────────────────────────
-
-    def upsert_client(
-        self,
-        name: str,
-        document_type: str,
-        document_number: str,
-        email: str | None,
-        phone: str | None,
-    ) -> ClientRef:
-        existing = self._session.scalar(select(ClientORM).where(ClientORM.document_number == document_number))
-        if existing is None:
-            client = ClientORM(
-                name=name,
-                document_type=document_type,
-                document_number=document_number,
-                email=email,
-                phone=phone,
-            )
+    def upsert_client(self, name: str, document_type: str, document_number: str, email: str | None, phone: str | None) -> ClientRef:
+        client = self._session.scalar(select(ClientORM).where(ClientORM.document_number == document_number))
+        if client is None:
+            client = ClientORM(name=name, document_type=document_type, document_number=document_number, email=email, phone=phone)
             self._session.add(client)
-            self._session.flush()
         else:
-            existing.name = name
-            existing.email = email
-            existing.phone = phone
-            existing.updated_at = datetime.now(UTC)
-            self._session.flush()
-            client = existing
+            client.name, client.email, client.phone, client.updated_at = name, email, phone, datetime.now(UTC)
+        self._session.flush()
         return ClientRef(id=client.id)
 
     def upsert_vehicle(self, client_id: int, brand: str, model: str, year: int, plate: str) -> VehicleRef:
-        existing = self._session.scalar(select(VehicleORM).where(VehicleORM.license_plate == plate))
-        if existing is None:
+        vehicle = self._session.scalar(select(VehicleORM).where(VehicleORM.license_plate == plate))
+        if vehicle is None:
             vehicle = VehicleORM(client_id=client_id, brand=brand, model=model, year=year, license_plate=plate)
             self._session.add(vehicle)
-            self._session.flush()
         else:
-            existing.client_id = client_id
-            existing.brand = brand
-            existing.model = model
-            existing.year = year
-            existing.updated_at = datetime.now(UTC)
-            self._session.flush()
-            vehicle = existing
+            vehicle.client_id, vehicle.brand, vehicle.model, vehicle.year = client_id, brand, model, year
+            vehicle.updated_at = datetime.now(UTC)
+        self._session.flush()
         return VehicleRef(id=vehicle.id)
 
-    def find_active_catalog_service(self, service_id: int) -> CatalogServiceRef | None:
-        orm = self._session.scalar(
-            select(CatalogServiceORM).where(
-                CatalogServiceORM.id == service_id,
-                CatalogServiceORM.active.is_(True),
-            )
-        )
-        return CatalogServiceRef(id=orm.id, base_price=orm.base_price) if orm else None
-
-    def find_part(self, part_id: int) -> PartRef | None:
-        orm = self._session.get(PartORM, part_id)
-        return PartRef(id=orm.id, name=orm.name, unit_price=orm.unit_price, stock_quantity=orm.stock_quantity) if orm else None
-
-    # ── order CRUD ────────────────────────────────────────────────────────────
-
-    def create_order(
-        self,
-        client_id: int,
-        vehicle_id: int,
-        problem_description: str,
-        service_items: list[ServiceItemInput],
-        part_items: list[PartItemInput],
-        labor_total: float,
-        parts_total: float,
-        quote_total: float,
-    ) -> ServiceOrderEntity:
+    def create_order(self, client_id: int, vehicle_id: int, problem_description: str, now: datetime) -> ServiceOrderEntity:
         order = ServiceOrderORM(
             client_id=client_id,
             vehicle_id=vehicle_id,
             status=ServiceOrderStatus.RECEIVED.value,
             problem_description=problem_description,
-            labor_total=labor_total,
-            parts_total=parts_total,
-            quote_total=quote_total,
         )
         self._session.add(order)
         self._session.flush()
-
-        for item in service_items:
-            self._session.add(
-                ServiceOrderService(
-                    service_order_id=order.id,
-                    service_id=item.service_id,
-                    quantity=item.quantity,
-                    unit_price=item.unit_price,
-                    subtotal=item.subtotal,
-                )
-            )
-        for item in part_items:
-            self._session.add(
-                ServiceOrderPart(
-                    service_order_id=order.id,
-                    part_id=item.part_id,
-                    quantity=item.quantity,
-                    unit_price=item.unit_price,
-                    subtotal=item.subtotal,
-                )
-            )
-        self._session.commit()
-        return _to_entity(_load_full(self._session, order.id))  # type: ignore[arg-type]
-
-    def list_orders(self) -> list[ServiceOrderEntity]:
-        stmt = (
-            select(ServiceOrderORM)
-            .options(joinedload(ServiceOrderORM.client), joinedload(ServiceOrderORM.vehicle))
-            .order_by(ServiceOrderORM.id.desc())
+        self._session.add(
+            StatusHistoryORM(service_order_id=order.id, from_status=None, to_status=order.status, reason="OS aberta", created_at=now)
         )
-        return [_to_entity(o, include_items=False) for o in self._session.scalars(stmt).all()]
+        self._session.flush()
+        return self.get_order(order.id)
 
     def list_active_orders(self) -> list[ServiceOrderEntity]:
-        _INACTIVE = [
-            ServiceOrderStatus.FINISHED.value,
-            ServiceOrderStatus.DELIVERED.value,
-            ServiceOrderStatus.REJECTED.value,
-        ]
-        _priority = case(
+        priority = case(
             (ServiceOrderORM.status == ServiceOrderStatus.IN_PROGRESS.value, 1),
-            (ServiceOrderORM.status == ServiceOrderStatus.WAITING_APPROVAL.value, 2),
-            (ServiceOrderORM.status == ServiceOrderStatus.IN_DIAGNOSIS.value, 3),
-            (ServiceOrderORM.status == ServiceOrderStatus.RECEIVED.value, 4),
-            else_=5,
+            (ServiceOrderORM.status == ServiceOrderStatus.WAITING_PAYMENT.value, 2),
+            (ServiceOrderORM.status == ServiceOrderStatus.WAITING_APPROVAL.value, 3),
+            (ServiceOrderORM.status == ServiceOrderStatus.IN_DIAGNOSIS.value, 4),
+            (ServiceOrderORM.status == ServiceOrderStatus.RECEIVED.value, 5),
+            else_=6,
         )
-        stmt = (
-            select(ServiceOrderORM)
-            .options(joinedload(ServiceOrderORM.client), joinedload(ServiceOrderORM.vehicle))
-            .where(ServiceOrderORM.status.not_in(_INACTIVE))
-            .order_by(_priority, ServiceOrderORM.created_at.asc())
-        )
-        return [_to_entity(o, include_items=False) for o in self._session.scalars(stmt).unique().all()]
+        stmt = _query().where(ServiceOrderORM.status.not_in([s.value for s in INACTIVE_STATUSES])).order_by(priority, ServiceOrderORM.created_at)
+        return [_to_entity(o) for o in self._session.scalars(stmt).unique()]
 
     def get_order(self, order_id: int) -> ServiceOrderEntity | None:
-        orm = _load_full(self._session, order_id)
+        orm = self._session.scalars(_query().where(ServiceOrderORM.id == order_id).execution_options(populate_existing=True)).unique().first()
         return _to_entity(orm) if orm else None
 
-    def update_order_fields(self, order_id: int, fields: dict[str, object]) -> ServiceOrderEntity | None:
-        order = self._session.get(ServiceOrderORM, order_id)
+    def apply_change(
+        self, order_id: int, status: ServiceOrderStatus | None, reason: str, fields: dict[str, Any], now: datetime
+    ) -> tuple[str, ServiceOrderEntity]:
+        order = self._session.get(ServiceOrderORM, order_id, with_for_update=True)
         if order is None:
-            return None
+            raise LookupError(f"OS {order_id} não existe.")
+        previous = order.status
         for key, value in fields.items():
-            setattr(order, key, value)
-        self._session.commit()
-        return _to_entity(_load_full(self._session, order_id))  # type: ignore[arg-type]
-
-    # ── atomic approval ───────────────────────────────────────────────────────
-
-    def execute_approval(self, order_id: int) -> ServiceOrderEntity | None:
-        order = self._session.get(ServiceOrderORM, order_id)
-        if order is None:
-            return None
-        full = _load_full(self._session, order_id)
-        now = datetime.now(UTC)
-        for item in full.part_items:  # type: ignore[union-attr]
-            part = self._session.get(PartORM, item.part_id)
-            if part is not None:
-                part.stock_quantity -= item.quantity
-                part.updated_at = now
-        order.status = ServiceOrderStatus.IN_PROGRESS.value
-        order.quote_token = None
-        order.approved_at = now
-        order.started_at = now
-        order.updated_at = now
-        self._session.commit()
-        return _to_entity(_load_full(self._session, order_id))  # type: ignore[arg-type]
-
-    # ── tracking and metrics ──────────────────────────────────────────────────
+            if key == "items":
+                order.items.clear()
+                order.items.extend(ServiceOrderItemORM(**item) for item in value)
+            elif key in _UPDATABLE_FIELDS:
+                setattr(order, key, _naive_utc(value))
+            else:
+                raise ValueError(f"Campo não atualizável na OS: {key}")
+        if status is not None and status.value != previous:
+            order.status = status.value
+            self._session.add(StatusHistoryORM(service_order_id=order_id, from_status=previous, to_status=status.value, reason=reason, created_at=now))
+        order.updated_at = _naive_utc(now)
+        self._session.flush()
+        return previous, self.get_order(order_id)
 
     def get_tracking(self, order_id: int, document_number: str) -> ServiceOrderEntity | None:
-        stmt = (
-            select(ServiceOrderORM)
-            .options(joinedload(ServiceOrderORM.client), joinedload(ServiceOrderORM.vehicle))
-            .join(ServiceOrderORM.client)
-            .where(ServiceOrderORM.id == order_id, ClientORM.document_number == document_number)
-        )
-        orm = self._session.scalars(stmt).first()
-        return _to_entity(orm, include_items=False) if orm else None
+        stmt = _query().join(ServiceOrderORM.client).where(ServiceOrderORM.id == order_id, ClientORM.document_number == document_number)
+        orm = self._session.scalars(stmt).unique().first()
+        return _to_entity(orm) if orm else None
 
     def get_average_execution_time(self) -> AverageExecutionTimeData:
-        # PostgreSQL: extrai a diferença em segundos do intervalo e converte para minutos
-        avg_expr = func.extract(
-            "epoch", ServiceOrderORM.finished_at - ServiceOrderORM.started_at
-        ) / 60
+        # Execução = do início do reparo (ReparoIniciado) à finalização (ExecucaoFinalizada).
+        minutes = func.extract("epoch", ServiceOrderORM.finished_at - ServiceOrderORM.started_at) / 60
         condition = ServiceOrderORM.started_at.is_not(None), ServiceOrderORM.finished_at.is_not(None)
         finished_orders = self._session.scalar(select(func.count(ServiceOrderORM.id)).where(*condition)) or 0
-        average_minutes = (
-            self._session.scalar(select(func.coalesce(func.avg(avg_expr), 0)).where(*condition)) or 0
-        )
-        return AverageExecutionTimeData(
-            finished_orders=int(finished_orders),
-            average_minutes=round(float(average_minutes), 2),
-        )
+        average_minutes = self._session.scalar(select(func.coalesce(func.avg(minutes), 0)).where(*condition)) or 0
+        return AverageExecutionTimeData(finished_orders=int(finished_orders), average_minutes=round(float(average_minutes), 2))
+
+    def commit(self) -> None:
+        self._session.commit()

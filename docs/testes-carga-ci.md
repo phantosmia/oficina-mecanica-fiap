@@ -2,26 +2,37 @@
 
 ## Testes automatizados
 
-Os testes utilizam **Testcontainers** para provisionar um PostgreSQL efêmero por execução. Basta ter o Docker disponível e rodar:
-
 ```bash
 poetry run pytest
 ```
 
-O fluxo automático é:
+- **PostgreSQL de verdade** via **Testcontainers**: no início da sessão, `tests/conftest.py` sobe um `postgres:16-alpine` numa porta aleatória e aponta a `DATABASE_URL` da aplicação para ele; ao final, o container é destruído. A cada teste, o schema é recriado por migrations (`alembic downgrade base` + `upgrade head`), por isso as migrations precisam ser reversíveis.
+- Para usar um banco já existente em vez do Testcontainers, defina **`TEST_DATABASE_URL`**. De propósito, os testes **não** usam `DATABASE_URL` diretamente: eles apagam o schema a cada caso, e `DATABASE_URL` pode estar apontando para um banco de verdade no ambiente de quem roda.
+- **SQS e SNS** simulados pelo [moto](https://github.com/getmoto/moto).
+- A cobertura mínima configurada é de `80%` (`pyproject.toml`), sobre todo o pacote `app`.
 
-1. No início da sessão, `tests/conftest.py` sobe um container `postgres:16-alpine` em uma porta aleatória.
-2. A `DATABASE_URL` da aplicação é configurada para apontar para esse container.
-3. A cada teste, o schema é resetado por migrations (`alembic downgrade base` + `alembic upgrade head`).
-4. Ao final da sessão, o container é destruído.
+| Arquivo | O que cobre |
+|---|---|
+| `tests/test_saga_state_machine.py` | Máquina de estados da saga, sem banco: cada transição, cada ponto de falha com suas compensações em ordem, prazos, reenvio e intervenção manual (tabelas de `docs/saga.md`) |
+| `tests/test_orchestrator.py` | Orquestrador com PostgreSQL: transação única, idempotência, evento sem saga, prazos, compensação parada e reenvio |
+| `tests/test_service_order_api.py` | API de OS: abertura iniciando a saga, itens do diagnóstico, listagem, entrega, rastreio público por CPF ou token |
+| `tests/test_messaging.py` | Relay enviando cada comando à fila do participante certo; eventos chegando pelo tópico assinado |
+| `tests/features/fluxo_ordem_de_servico.feature` + `tests/test_bdd_fluxo_os.py` | **BDD** (Gherkin em português, `pytest-bdd`): fluxo completo da abertura à entrega e três fluxos com compensação |
 
-Caso `DATABASE_URL` já esteja definida no ambiente, o Testcontainers não é acionado e os testes usam a conexão fornecida.
+### BDD
 
-A cobertura mínima configurada é de `80%` para os domínios críticos.
+O PDF da Fase 4 pede pelo menos um fluxo completo testado com BDD. Os cenários estão em [`tests/features/fluxo_ordem_de_servico.feature`](../tests/features/fluxo_ordem_de_servico.feature), escritos em português (`# language: pt`):
+
+- **Fluxo completo, da abertura à entrega**: cada passo da saga, com o comando enviado a cada participante e o status da OS em cada etapa.
+- **Cliente recusa o orçamento**: as peças reservadas são liberadas e a OS termina `recusada`.
+- **Pagamento não concluído**: cobrança, orçamento e reserva desfeitos, um de cada vez, nessa ordem.
+- **Falha depois do pagamento**: estorno, cancelamento do orçamento e devolução das peças.
+
+A OS é aberta e entregue pela API de verdade, com PostgreSQL; os outros microsserviços são simulados publicando para o orquestrador os eventos que publicariam. Cada microsserviço tem a própria suíte de testes no seu repositório, e o fluxo com os seis rodando juntos é validado no `docker-compose.yml` (ver [Execução local](execucao-local.md)).
 
 ## Teste de carga com Locust
 
-O cenário de carga fica em [k8s/load-test/locustfile.py](../k8s/load-test/locustfile.py). Ele autentica com o usuário admin, consulta endpoints protegidos e mistura chamadas leves (`/health`) com chamadas que acessam o banco (`/db-status`, `/clients`, `/vehicles`, `/service-orders`, `/services` e `/parts`).
+O cenário de carga fica em [k8s/load-test/locustfile.py](../k8s/load-test/locustfile.py). Ele autentica com o usuário admin, consulta endpoints protegidos e mistura chamadas leves (`/health`) com chamadas que acessam o banco (`/db-status`, `/clients`, `/vehicles`, `/service-orders` e `/service-orders/metrics/average-execution-time`).
 
 As execuções locais usam a imagem Docker oficial do Locust, então não é necessário instalar o Locust no ambiente Poetry da API.
 

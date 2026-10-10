@@ -22,3 +22,12 @@ data:
   # segredo — só ativa de fato quando NEW_RELIC_LICENSE_KEY (secret) também
   # estiver definida (ver docker-entrypoint.sh).
   NEW_RELIC_APP_NAME: oficina-mecanica-api
+  # Saga (Fase 4, RFC-0007): fila de eventos do orquestrador e filas de
+  # comandos dos participantes. Sobrescritas pelo overlay com os outputs do
+  # Terraform de cada serviço.
+  AWS_REGION: us-east-1
+  SAGA_EVENTS_QUEUE_URL: ""
+  ESTOQUE_COMMANDS_QUEUE_URL: ""
+  EXECUCAO_COMMANDS_QUEUE_URL: ""
+  ORCAMENTO_COMMANDS_QUEUE_URL: ""
+  PAGAMENTO_COMMANDS_QUEUE_URL: ""

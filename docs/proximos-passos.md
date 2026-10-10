@@ -24,15 +24,17 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 ## 3. OS Service (este repositório)
 
-- [ ] Remover `app/service_catalog` e `app/parts` (e as tabelas, via migration) depois que o Catálogo e o Estoque estiverem prontos.
-- [ ] Módulo `app/saga/`: tabela `sagas`, máquina de estados, outbox + publicador, consumidor de `os-saga-eventos`, tarefa periódica de prazos.
-- [ ] Abertura da OS sem itens (só cliente, veículo e problema; itens vêm do diagnóstico) e nova máquina de status (`aguardando_pagamento`, `cancelada`), com atualização de `docs/regras-negocio.md`/`docs/api.md`.
-- [ ] Remover o fluxo de aprovação/envio de orçamento daqui (vai para o serviço de Orçamento).
+- [x] Orquestrador da saga (`app/saga/`): máquina de estados pura no domínio (todas as transições, compensações em ordem e prazos de `docs/saga.md`), tabela `sagas`, outbox de comandos com destino + relay SQS, consumidor de `os-saga-eventos`, verificação periódica de prazos, reenvio manual (`POST /service-orders/{id}/saga/retry`). Avanço da saga, status da OS, histórico, outbox e idempotência numa transação.
+- [x] Catálogo e peças removidos (rotas, contextos e tabelas, via migration reversível `20261010_0004`); itens da OS viram snapshot do diagnóstico (`service_order_items`); histórico de status (`service_order_status_history`).
+- [x] Abertura da OS sem itens (ADR-0010) e nova máquina de status (`aguardando_pagamento`, `cancelada`); `docs/regras-negocio.md` e `docs/api.md` reescritos.
+- [x] Fluxo de aprovação/envio de orçamento removido daqui (agora no serviço de Orçamento).
+- [x] Manifests Kubernetes com worker e relay (o pipeline de deploy ainda não substitui os `REPLACE_WITH_*_QUEUE_URL`: fica para as etapas 5/6).
 
 ## 4. Integração e testes ponta a ponta
 
-- [ ] `docker-compose` com os 6 serviços + LocalStack (SQS, SNS, DynamoDB) + PostgreSQLs.
-- [ ] **BDD** (`pytest-bdd`): fluxo feliz completo e pelo menos um fluxo com compensação.
+- [x] `docker-compose.yml` com os 6 serviços (API, worker e relay de cada um) + LocalStack (SQS, SNS, DynamoDB) + Mailpit. **Validado** em 2026-10-10: OS aberta → diagnóstico com itens do Catálogo → reserva no Estoque → orçamento por e-mail → aprovação pela página do link → cobrança criada no **Mercado Pago real**; e três compensações reais: recusa do orçamento liberando a reserva; estoque insuficiente cancelando a OS; e **prazo de pagamento vencido**, que cancelou a cobrança no Mercado Pago (conferido na API deles), cancelou o orçamento e liberou a reserva, nessa ordem.
+- [x] **BDD** (`pytest-bdd`, Gherkin em português): fluxo completo e três fluxos com compensação (`tests/features/fluxo_ordem_de_servico.feature`).
+- [ ] **Pagamento pelo navegador no sandbox** para fechar o fluxo feliz real (OS → reparo → entrega) e confirmar o efeito de um cartão recusado (`OTHE`). Precisa da usuária (login com o comprador de teste).
 
 ## 5. CI/CD e qualidade (em cada um dos 6 repositórios)
 

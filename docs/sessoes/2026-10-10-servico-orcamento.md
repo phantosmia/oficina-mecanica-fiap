@@ -1,4 +1,4 @@
-# 2026-10-10 — Microsserviços de Orçamento e Pagamento
+# 2026-10-10 — Orçamento, Pagamento e o orquestrador da saga
 
 ## Contexto / pedido original
 
@@ -27,7 +27,18 @@ Continuação da sessão de [2026-10-03](2026-10-03-desenho-fase4-microsservicos
 - **`PagamentoRecusado` na demonstração**: a expiração é o caminho garantido (a reconciliação detecta). Se um cartão recusado (`OTHE`) leva a order a `failed` ou a mantém aberta para nova tentativa **não foi verificado** (exige pagar pelo navegador com o comprador de teste); fica para o teste de ponta a ponta. `docs/saga.md` ("Como provocar cada falha") diz isso explicitamente.
 - **Credenciais**: o token de teste foi copiado do `.mercado_pago_credentials` (no `oficina-mecanica-fiap`) para um `.env` no repositório do Pagamento (ignorado, `chmod 600`). Antes do commit, conferido que nem o `.env` nem o token estavam no stage.
 
+## OS Service e orquestrador (mesma sessão)
+
+- **Nesta PR**: o OS Service refatorado para o papel da Fase 4 e o orquestrador (`app/saga/`), além do `docker-compose.yml` com os 6 serviços. Ver `docs/proximos-passos.md` (etapas 3 e 4) para o que foi entregue.
+- **Máquina de estados como domínio puro** (`ServiceOrderSaga`): recebe (estado, evento) e devolve uma `Decision` (comandos, mudança na OS, aviso ao cliente). Os 21 testes unitários cobrem linha a linha as tabelas de `docs/saga.md`; a camada de aplicação só grava a decisão numa transação.
+- **Compensações uma de cada vez**, cada uma esperando a confirmação da anterior (não em paralelo): mais lento, mas a ordem do `docs/saga.md` (estornar antes de liberar a reserva etc.) é respeitada e fica legível no histórico. Compensação que esgota as tentativas fica parada em `COMPENSANDO` com reenvio manual, nunca é dada como concluída sem confirmação.
+- **Mensagens fora de ordem aceitas onde fazem sentido**: `DiagnosticoIniciado`/`DiagnosticoConcluido` antes do `DiagnosticoEnfileirado`, `PagamentoConfirmado` antes do `CobrancaCriada`. Eventos atrasados durante a compensação são ignorados (o participante que está compensando já trata o caso, ex.: o Pagamento estorna um pagamento que entrou no meio).
+- **Abertura da OS e início da saga na mesma transação**: o `CreateServiceOrderUseCase` recebe uma porta `ISagaStarter`, implementada pela saga com a mesma sessão SQLAlchemy. Por isso o repositório de OS deixou de fazer commit sozinho.
+- **`PagamentoConfirmado` antes do `CobrancaCriada`** (pergunta da usuária: por que aceitar?): o evento só existe depois de o Pagamento ver a cobrança paga no Mercado Pago, então a cobrança necessariamente existe; recusá-lo faria a saga marcá-lo como processado, esperar um pagamento que já aconteceu e, no prazo, estornar o cliente. Ao responder, apareceu uma lacuna (a saga não guardava os dados da cobrança nesse caso), corrigida na mesma PR.
+- **Testes do OS Service passam a usar `TEST_DATABASE_URL`** em vez de `DATABASE_URL` (mesma proteção dos outros serviços: a suíte recria o schema a cada caso). O `CLAUDE.md` local e `docs/testes-carga-ci.md` foram atualizados.
+- **Validação com os 6 serviços reais** (docker-compose): fluxo até a cobrança no Mercado Pago real e três compensações reais (recusa, estoque insuficiente e prazo de pagamento vencido, esta cancelando a cobrança no Mercado Pago real) funcionaram na primeira execução, sem ajuste de contrato entre os serviços: os payloads documentados em `docs/saga.md` na etapa de cada participante bateram com o que o orquestrador envia.
+
 ## Pendências para a próxima sessão
 
-- **Pagamento de ponta a ponta pelo navegador** no sandbox (logar com o usuário comprador de teste, cartão `APRO`), de preferência como ensaio do vídeo.
-- **OS Service com o orquestrador**, que liga os 6 serviços.
+- **Pagamento de ponta a ponta pelo navegador** no sandbox (logar com o usuário comprador de teste, cartão `APRO`), fechando o fluxo feliz real até a entrega; de preferência como ensaio do vídeo.
+- Etapas 5 (CI/CD com SonarCloud e deploy no EKS, proteção da `main`) e 6 (Terraform de filas, tópicos, tabelas e bancos; observabilidade).

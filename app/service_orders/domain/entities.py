@@ -13,38 +13,11 @@ class VehicleRef:
 
 
 @dataclass
-class CatalogServiceRef:
-    id: int
-    base_price: float
+class OrderItem:
+    """Serviço ou peça definido no diagnóstico, com o preço copiado do Catálogo."""
 
-
-@dataclass
-class PartRef:
-    id: int
-    name: str
-    unit_price: float
-    stock_quantity: int
-
-
-@dataclass
-class ServiceItemInput:
-    service_id: int
-    quantity: int
-    unit_price: float
-    subtotal: float
-
-
-@dataclass
-class PartItemInput:
-    part_id: int
-    quantity: int
-    unit_price: float
-    subtotal: float
-
-
-@dataclass
-class ServiceItemEntity:
-    service_id: int
+    kind: str  # "servico" ou "peca"
+    item_id: str
     name: str
     quantity: int
     unit_price: float
@@ -52,13 +25,11 @@ class ServiceItemEntity:
 
 
 @dataclass
-class PartItemEntity:
-    part_id: int
-    name: str
-    sku: str
-    quantity: int
-    unit_price: float
-    subtotal: float
+class StatusChange:
+    from_status: str | None
+    to_status: str
+    reason: str
+    at: datetime
 
 
 @dataclass
@@ -78,18 +49,21 @@ class ServiceOrderEntity:
     labor_total: float
     parts_total: float
     quote_total: float
-    quote_token: str | None
     client_name: str
     client_document_number: str
     client_email: str | None
     vehicle_plate: str
+    vehicle_brand: str
     vehicle_model: str
+    vehicle_year: int
     created_at: datetime
     updated_at: datetime | None
-    quote_sent_at: datetime | None
-    approved_at: datetime | None
-    started_at: datetime | None
-    finished_at: datetime | None
-    delivered_at: datetime | None
-    service_items: list[ServiceItemEntity] = field(default_factory=list)
-    part_items: list[PartItemEntity] = field(default_factory=list)
+    quote_sent_at: datetime | None = None
+    approved_at: datetime | None = None
+    paid_at: datetime | None = None
+    started_at: datetime | None = None
+    finished_at: datetime | None = None
+    delivered_at: datetime | None = None
+    cancelled_at: datetime | None = None
+    items: list[OrderItem] = field(default_factory=list)
+    status_history: list[StatusChange] = field(default_factory=list)

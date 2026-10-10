@@ -20,12 +20,12 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | Artigo | Conteúdo |
 |---|---|
 | [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (ER, componentes C4, infraestrutura AWS, dependência entre repositórios, fluxo de deploy e sequência) |
-| [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS, status, cálculo de orçamento e baixa de estoque |
-| [Execução local](docs/execucao-local.md) | Mise, Poetry, Docker Compose, migrations e dados de exemplo |
+| [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS pelos microsserviços, status, cálculo do orçamento, reserva e baixa de estoque, compensações e prazos |
+| [Execução local](docs/execucao-local.md) | Mise, Poetry, o sistema completo no Docker Compose e o passo a passo de uma OS atravessando os serviços |
 | [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR e Secrets Manager |
 | [API e autenticação](docs/api.md) | JWT, endpoints públicos, endpoints administrativos e notas de uso |
 | [Notificações por e-mail](docs/email.md) | SMTP, provedores compatíveis e configuração de envio |
-| [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, Locust, HPA e GitHub Actions |
+| [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, BDD, Locust, HPA e GitHub Actions |
 | [Segurança](docs/seguranca.md) | Bandit, pip-audit, Trivy e relatórios gerados |
 | [Saga da ordem de serviço](docs/saga.md) | Fase 4: contratos entre os microsserviços (comandos, eventos, compensações, prazos e envelope das mensagens) |
 | [RFCs](docs/rfcs/README.md) | Decisões técnicas relevantes: nuvem, banco, autenticação, API Gateway, monitoramento, decomposição em microsserviços, mensageria e separação de Orçamento e Pagamento |
@@ -51,22 +51,18 @@ O sistema é composto por 9 repositórios, cada um com CI/CD e regras de proteç
 
 ## Visão geral
 
-Esta versão atende os principais requisitos do desafio:
+Este repositório é o **OS Service**: o dono das ordens de serviço e o **orquestrador da saga** que coordena os outros cinco microsserviços ([ADR-0008](docs/adrs/0008-saga-orquestrada-no-os-service.md), contrato em [`docs/saga.md`](docs/saga.md)).
 
-- CRUD de clientes, veículos, serviços do catálogo, peças e insumos
-- criação, acompanhamento, listagem e detalhamento de ordens de serviço
-- orçamento automático baseado em serviços e peças
-- baixa automática de estoque na aprovação da OS
-- acompanhamento do status da OS
-- consulta pública de andamento da OS pelo cliente
-- aprovação ou recusa pública de orçamento por token enviado por e-mail
-- autenticação JWT para APIs administrativas
-- validações de CPF/CNPJ, placa e e-mail
-- migrations Alembic para versionamento do banco
-- testes automatizados com Testcontainers e cobertura mínima
-- Docker Compose, Kubernetes, HPA, Locust, Terraform AWS/EKS e CI/CD
-- logs estruturados em JSON, correlacionados por requisição (`X-Request-ID`) e por trace/span da APM (New Relic)
-- diagramas de arquitetura (ER, componentes C4, infraestrutura AWS, dependência entre repositórios, fluxo de deploy e sequência) em [docs/arquitetura.md](docs/arquitetura.md)
+- abertura da OS com cliente, veículo e problema relatado; os serviços e peças vêm do diagnóstico do mecânico ([ADR-0010](docs/adrs/0010-diagnostico-define-o-orcamento.md))
+- **saga orquestrada**: máquina de estados que envia comandos aos participantes (Estoque, Execução, Orçamento, Pagamento) por SQS e reage aos eventos deles, com **compensação** em ordem quando algo falha e **prazos** com reenvio
+- avanço da saga, status da OS, histórico, comandos (outbox) e idempotência gravados **numa única transação**
+- acompanhamento: listagem, detalhamento com itens e histórico de status, estado da saga, rastreio público pelo cliente (CPF/CNPJ ou JWT da Lambda de autenticação)
+- CRUD de clientes e veículos; emissão do JWT de admin usado por todos os serviços
+- testes: unitários da máquina de estados, integração com PostgreSQL (Testcontainers) e SQS/SNS (moto), e **BDD** do fluxo completo e das compensações ([docs/testes-carga-ci.md](docs/testes-carga-ci.md))
+- `docker-compose.yml` com **os 6 microsserviços** rodando juntos, LocalStack e Mailpit
+- migrations Alembic, Kubernetes (API, worker e relay), HPA, Locust, Terraform AWS/EKS e CI/CD
+- logs estruturados em JSON, correlacionados por requisição (`X-Request-ID`) e por trace/span da APM (New Relic); `saga_id`/`order_id` propagados nas mensagens
+- diagramas de arquitetura em [docs/arquitetura.md](docs/arquitetura.md) (da Fase 3; o diagrama da arquitetura de microsserviços está no checklist da Fase 4)
 
 ## Stack
 
@@ -85,17 +81,23 @@ Esta versão atende os principais requisitos do desafio:
 
 ## Como rodar rápido
 
-Com Docker Compose:
+O `docker-compose.yml` sobe **o sistema inteiro da Fase 4**: os 6 microsserviços (cada um com API, worker e relay), LocalStack (SQS, SNS e DynamoDB) e Mailpit (caixa de e-mail de teste). Os repositórios dos outros serviços precisam estar clonados ao lado deste (`../oficina-mecanica-catalogo`, `../oficina-mecanica-estoque`, ...).
 
 ```bash
 docker compose up --build
 ```
 
-Depois acesse:
+| Serviço | Swagger |
+|---|---|
+| OS Service (este) | `http://localhost:8000/docs` |
+| Catálogo | `http://localhost:8001/docs` |
+| Estoque | `http://localhost:8002/docs` |
+| Execução | `http://localhost:8003/docs` |
+| Orçamento | `http://localhost:8004/docs` |
+| Pagamento | `http://localhost:8005/docs` |
+| Mailpit (e-mails enviados) | `http://localhost:8025` |
 
-- `http://localhost:8000/docs`
-- `http://localhost:8000/health`
-- `http://localhost:8000/db-status`
+O Pagamento fala com o sandbox do Mercado Pago se existir `../oficina-mecanica-pagamento/.env` com as credenciais de teste (ver o README de lá). O passo a passo de uma OS atravessando os serviços está em [docs/execucao-local.md](docs/execucao-local.md).
 
 Para parar:
 
@@ -106,7 +108,7 @@ docker compose down
 Para rodar localmente com Poetry:
 
 ```bash
-docker compose up -d db
+docker compose up -d os-db
 poetry install
 poetry run alembic upgrade head
 poetry run uvicorn app.main:app --reload

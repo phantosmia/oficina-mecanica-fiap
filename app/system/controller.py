@@ -16,7 +16,7 @@ def _get_repo(session: Session = Depends(get_db)) -> ISystemRepository:
 
 @router.get("/", response_model=RootMessage)
 def read_root() -> RootMessage:
-    return RootMessage(message="Oficina Mecânica FIAP API pronta para gestão de ordens de serviço")
+    return RootMessage(message="Oficina Mecânica FIAP — OS Service (ordens de serviço e orquestrador da saga)")
 
 
 @router.get("/health", response_model=HealthStatus)
@@ -32,7 +32,5 @@ def database_status(repo: ISystemRepository = Depends(_get_repo)) -> DatabaseSta
         connection=entity.connection,
         clients=entity.clients,
         vehicles=entity.vehicles,
-        services=entity.services,
-        parts=entity.parts,
         service_orders=entity.service_orders,
     )
