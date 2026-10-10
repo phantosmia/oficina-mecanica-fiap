@@ -159,7 +159,7 @@ Regras para todos os consumidores:
 
 ## Payloads
 
-Conteúdo do campo `payload` de cada mensagem já implementada. `saga_id` e `order_id` vão sempre no envelope, nunca no payload. Os de Orçamento e de Pagamento entram aqui quando esses serviços forem implementados.
+Conteúdo do campo `payload` de cada mensagem já implementada. `saga_id` e `order_id` vão sempre no envelope, nunca no payload. Os de Pagamento entram aqui quando o serviço for implementado.
 
 ### Execução ([oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao))
 
@@ -171,6 +171,17 @@ Conteúdo do campo `payload` de cada mensagem já implementada. `saga_id` e `ord
 | `EnfileiramentoFalhou` | `etapa` (`diagnostico` ou `reparo`) e `reason` (`payload_invalido`, `os_ja_esta_na_execucao`, `os_nao_encontrada`, `status_<etapa atual>`) |
 | `DiagnosticoConcluido` | `notes`; `services`: `[{service_id, name, quantity, unit_price, subtotal}]`; `parts`: `[{part_id, name, quantity, unit_price, subtotal}]`; `labor_total`, `parts_total`, `total`. Preços copiados do Catálogo no momento do diagnóstico |
 | `ExecucaoFinalizada` | `notes` (pode ser `null`) |
+
+### Orçamento ([oficina-mecanica-orcamento](https://github.com/phantosmia/oficina-mecanica-orcamento))
+
+| Mensagem | Payload |
+|---|---|
+| `GerarOrcamento` | O payload do `DiagnosticoConcluido` (`notes`, `services`, `parts`) mais `customer`: `{name, email}`, que o orquestrador tem da abertura da OS. Totais que vierem no comando são ignorados: o Orçamento recalcula a partir dos itens. Sem `customer.email`, o orçamento é criado mas não é enviado por e-mail (o admin pega o link em `GET /quotes/{order_id}`) |
+| `OrcamentoGerado` | `quote_id`, `labor_total`, `parts_total`, `total`, `valid_until` |
+| `OrcamentoFalhou` | `reason` (`payload_invalido`, `os_ja_tem_orcamento`, `saga_ja_compensada`) |
+| `OrcamentoAprovado`, `OrcamentoRecusado` | `quote_id`, `total`, `decided_by` (`cliente` ou `admin`) |
+| `CancelarOrcamento` | vazio |
+| `OrcamentoCancelado` | `quote_id` (`null` se o orçamento nunca chegou a existir) |
 
 ### Estoque ([oficina-mecanica-estoque](https://github.com/phantosmia/oficina-mecanica-estoque))
 
