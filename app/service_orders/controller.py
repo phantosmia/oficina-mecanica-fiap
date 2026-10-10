@@ -3,42 +3,31 @@ from sqlalchemy.orm import Session
 
 from app.shared.database import get_db
 from app.shared.dependencies import get_current_admin, get_current_client
-from app.shared.email import IEmailNotifier
 from app.shared.http_errors import domain_error_handler
-from app.shared.smtp_notifier import SmtpEmailNotifier
 from app.shared.validators import validate_document
-from app.service_orders.adapters.presenter import (
-    to_average_execution_time,
-    to_read,
-    to_summary,
-    to_tracking,
-)
+from app.service_orders.adapters.presenter import to_average_execution_time, to_read, to_summary, to_tracking
 from app.service_orders.adapters.sqlalchemy_repository import SqlAlchemyServiceOrderRepository
 from app.service_orders.application.use_cases import (
-    ApproveOrderUseCase,
     CreateServiceOrderUseCase,
     DeliverOrderUseCase,
-    FinishOrderUseCase,
     GetAverageExecutionTimeUseCase,
     GetServiceOrderUseCase,
     GetTrackingUseCase,
     ListServiceOrdersUseCase,
-    RejectOrderUseCase,
-    RespondQuoteUseCase,
-    SendQuoteUseCase,
-    StartDiagnosisUseCase,
 )
 from app.service_orders.domain.repository import IServiceOrderRepository
 from app.service_orders.schemas import (
     AverageExecutionTimeRead,
+    SagaRead,
     ServiceOrderCreate,
-    ServiceOrderDiagnosisUpdate,
-    ServiceOrderQuoteResponse,
-    ServiceOrderQuoteSend,
     ServiceOrderRead,
     ServiceOrderSummary,
     ServiceOrderTracking,
 )
+from app.saga.adapters.starter import SessionSagaStarter
+from app.saga.application.orchestrator import SagaOrchestrator
+from app.saga.domain.saga import ServiceOrderSaga
+from app.saga.wiring import build_orchestrator
 
 router = APIRouter(prefix="/service-orders", tags=["service-orders"])
 
@@ -47,20 +36,34 @@ def _get_repo(session: Session = Depends(get_db)) -> IServiceOrderRepository:
     return SqlAlchemyServiceOrderRepository(session)
 
 
-def _get_notifier() -> IEmailNotifier:
-    return SmtpEmailNotifier()
+def get_orchestrator() -> SagaOrchestrator:
+    return build_orchestrator()
+
+
+def _saga_read(saga: ServiceOrderSaga) -> SagaRead:
+    return SagaRead(
+        saga_id=saga.id,
+        order_id=saga.order_id,
+        state=saga.state.value,
+        pending_compensations=saga.pending_compensations,
+        final_status=saga.final_status.value if saga.final_status else None,
+        failure_reason=saga.failure_reason,
+        waiting_for=saga.last_command["type"] if saga.last_command else None,
+        attempts=saga.attempts,
+        deadline_at=saga.deadline_at,
+        data=saga.data,
+        created_at=saga.created_at,
+        updated_at=saga.updated_at,
+    )
 
 
 @router.get("", response_model=list[ServiceOrderSummary], dependencies=[Depends(get_current_admin)])
 def get_orders(repo: IServiceOrderRepository = Depends(_get_repo)) -> list[ServiceOrderSummary]:
+    """OS com trabalho pendente, por prioridade de status e depois as mais antigas."""
     return [to_summary(o) for o in ListServiceOrdersUseCase(repo).execute()]
 
 
-@router.get(
-    "/metrics/average-execution-time",
-    response_model=AverageExecutionTimeRead,
-    dependencies=[Depends(get_current_admin)],
-)
+@router.get("/metrics/average-execution-time", response_model=AverageExecutionTimeRead, dependencies=[Depends(get_current_admin)])
 def average_execution_time(repo: IServiceOrderRepository = Depends(_get_repo)) -> AverageExecutionTimeRead:
     return to_average_execution_time(GetAverageExecutionTimeUseCase(repo).execute())
 
@@ -71,92 +74,42 @@ def get_order(order_id: int, repo: IServiceOrderRepository = Depends(_get_repo))
         return to_read(GetServiceOrderUseCase(repo).execute(order_id))
 
 
-@router.post(
-    "",
-    response_model=ServiceOrderRead,
-    status_code=status.HTTP_201_CREATED,
-    dependencies=[Depends(get_current_admin)],
-)
-def post_order(payload: ServiceOrderCreate, repo: IServiceOrderRepository = Depends(_get_repo)) -> ServiceOrderRead:
+@router.post("", response_model=ServiceOrderRead, status_code=status.HTTP_201_CREATED, dependencies=[Depends(get_current_admin)])
+def post_order(
+    payload: ServiceOrderCreate,
+    session: Session = Depends(get_db),
+    orchestrator: SagaOrchestrator = Depends(get_orchestrator),
+) -> ServiceOrderRead:
+    """Abre a OS e inicia a saga (o primeiro passo é a fila de diagnóstico da Execução)."""
+    repo = SqlAlchemyServiceOrderRepository(session)
     with domain_error_handler():
-        return to_read(
-            CreateServiceOrderUseCase(repo).execute(
-                client_data=payload.client.model_dump(),
-                vehicle_data=payload.vehicle.model_dump(),
-                problem_description=payload.problem_description,
-                requested_services=[i.model_dump() for i in payload.requested_services],
-                requested_parts=[i.model_dump() for i in payload.requested_parts],
-            )
+        order = CreateServiceOrderUseCase(repo, SessionSagaStarter(session, orchestrator)).execute(
+            client_data=payload.client.model_dump(),
+            vehicle_data=payload.vehicle.model_dump(),
+            problem_description=payload.problem_description,
         )
-
-
-@router.post("/{order_id}/diagnosis", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])
-def begin_diagnosis(
-    order_id: int,
-    payload: ServiceOrderDiagnosisUpdate,
-    repo: IServiceOrderRepository = Depends(_get_repo),
-) -> ServiceOrderRead:
-    with domain_error_handler():
-        return to_read(StartDiagnosisUseCase(repo).execute(order_id, payload.diagnosis_notes))
-
-
-@router.post("/{order_id}/send-quote", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])
-def quote_order(
-    order_id: int,
-    payload: ServiceOrderQuoteSend,
-    repo: IServiceOrderRepository = Depends(_get_repo),
-    notifier: IEmailNotifier = Depends(_get_notifier),
-) -> ServiceOrderRead:
-    with domain_error_handler():
-        return to_read(SendQuoteUseCase(repo, notifier).execute(order_id, payload.diagnosis_notes))
-
-
-@router.post("/{order_id}/approve", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])
-def approve_service_order(
-    order_id: int,
-    repo: IServiceOrderRepository = Depends(_get_repo),
-    notifier: IEmailNotifier = Depends(_get_notifier),
-) -> ServiceOrderRead:
-    with domain_error_handler():
-        return to_read(ApproveOrderUseCase(repo, notifier).execute(order_id))
-
-
-@router.post("/{order_id}/reject", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])
-def reject_service_order(
-    order_id: int,
-    repo: IServiceOrderRepository = Depends(_get_repo),
-    notifier: IEmailNotifier = Depends(_get_notifier),
-) -> ServiceOrderRead:
-    """Registra a recusa do orçamento pelo cliente e notifica por e-mail."""
-    with domain_error_handler():
-        return to_read(RejectOrderUseCase(repo, notifier).execute(order_id))
-
-
-@router.post("/{order_id}/quote-response", response_model=ServiceOrderRead)
-def respond_quote(
-    order_id: int,
-    payload: ServiceOrderQuoteResponse,
-    repo: IServiceOrderRepository = Depends(_get_repo),
-    notifier: IEmailNotifier = Depends(_get_notifier),
-) -> ServiceOrderRead:
-    with domain_error_handler():
-        return to_read(RespondQuoteUseCase(repo, notifier).execute(order_id, payload.token, payload.decision.value))
-
-
-@router.post("/{order_id}/finish", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])
-def finish_service_order(
-    order_id: int,
-    repo: IServiceOrderRepository = Depends(_get_repo),
-    notifier: IEmailNotifier = Depends(_get_notifier),
-) -> ServiceOrderRead:
-    with domain_error_handler():
-        return to_read(FinishOrderUseCase(repo, notifier).execute(order_id))
+        return to_read(order)
 
 
 @router.post("/{order_id}/deliver", response_model=ServiceOrderRead, dependencies=[Depends(get_current_admin)])
 def deliver_service_order(order_id: int, repo: IServiceOrderRepository = Depends(_get_repo)) -> ServiceOrderRead:
+    """Entrega do veículo: única mudança manual de status (de `finalizada` para `entregue`)."""
     with domain_error_handler():
         return to_read(DeliverOrderUseCase(repo).execute(order_id))
+
+
+@router.get("/{order_id}/saga", response_model=SagaRead, dependencies=[Depends(get_current_admin)])
+def get_saga(order_id: int, orchestrator: SagaOrchestrator = Depends(get_orchestrator)) -> SagaRead:
+    """Estado da saga: etapa, compensações pendentes, tentativas, prazo e dados acumulados."""
+    with domain_error_handler():
+        return _saga_read(orchestrator.get(order_id))
+
+
+@router.post("/{order_id}/saga/retry", response_model=SagaRead, dependencies=[Depends(get_current_admin)])
+def retry_saga(order_id: int, orchestrator: SagaOrchestrator = Depends(get_orchestrator)) -> SagaRead:
+    """Reenvia o último comando da saga (ex.: compensação parada à espera de intervenção)."""
+    with domain_error_handler():
+        return _saga_read(orchestrator.retry(order_id))
 
 
 @router.get("/{order_id}/tracking", response_model=ServiceOrderTracking)

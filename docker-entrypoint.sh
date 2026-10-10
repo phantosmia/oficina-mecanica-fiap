@@ -1,7 +1,13 @@
 #!/bin/bash
 set -e
 
-echo "Starting oficina-mecanica API container..."
+# Mesma imagem para os três processos do OS Service:
+#   docker-entrypoint.sh            -> API (uvicorn)
+#   docker-entrypoint.sh worker     -> orquestrador: eventos da saga + prazos
+#   docker-entrypoint.sh relay      -> envia os comandos da outbox às filas dos participantes
+ROLE="${1:-api}"
+
+echo "Starting oficina-mecanica OS Service ($ROLE)..."
 
 # Aguardar PostgreSQL ficar disponível antes de iniciar a aplicação
 echo "Aguardando PostgreSQL ficar pronto..."
@@ -35,7 +41,7 @@ print(f"Falha ao conectar no PostgreSQL: {last_error}", file=sys.stderr)
 sys.exit(1)
 PY
 
-if [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
+if [ "$ROLE" = "api" ] && [ "${RUN_MIGRATIONS_ON_START:-true}" = "true" ]; then
     echo "Aplicando migrations do banco de dados..."
     poetry run alembic upgrade head
 else
@@ -43,15 +49,36 @@ else
 fi
 
 # Popular o banco com dados de exemplo (idempotente)
-echo "Populando banco com dados de exemplo..."
-poetry run python scripts/populate_db.py
+if [ "$ROLE" = "api" ]; then
+    echo "Populando banco com dados de exemplo..."
+    poetry run python scripts/populate_db.py
+fi
+
+# Só no docker-compose (LocalStack): na AWS, filas e assinaturas vêm do Terraform.
+if [ "${BOOTSTRAP_LOCAL_RESOURCES:-false}" = "true" ]; then
+    echo "Criando filas locais da saga..."
+    poetry run python -m scripts.bootstrap_local
+fi
 
 # Iniciar API — instrumentado pelo agente APM do New Relic (ADR-0007) quando
 # NEW_RELIC_LICENSE_KEY estiver definida (configuração 100% via variável de
 # ambiente, sem newrelic.ini); sem ela, roda normalmente (uso local/dev).
-echo "Iniciando servidor da API..."
+RUNNER=(poetry run)
 if [ -n "${NEW_RELIC_LICENSE_KEY:-}" ]; then
-    exec poetry run newrelic-admin run-program uvicorn app.main:app --host 0.0.0.0 --port 8000
-else
-    exec poetry run uvicorn app.main:app --host 0.0.0.0 --port 8000
+    RUNNER=(poetry run newrelic-admin run-program)
 fi
+
+case "$ROLE" in
+    worker)
+        echo "Iniciando worker do orquestrador..."
+        exec "${RUNNER[@]}" python -m app.worker
+        ;;
+    relay)
+        echo "Iniciando relay da outbox..."
+        exec "${RUNNER[@]}" python -m app.outbox_relay
+        ;;
+    *)
+        echo "Iniciando servidor da API..."
+        exec "${RUNNER[@]}" uvicorn app.main:app --host 0.0.0.0 --port 8000
+        ;;
+esac
