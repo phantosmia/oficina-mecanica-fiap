@@ -159,7 +159,7 @@ Regras para todos os consumidores:
 
 ## Payloads
 
-Conteúdo do campo `payload` de cada mensagem já implementada. `saga_id` e `order_id` vão sempre no envelope, nunca no payload. Os de Pagamento entram aqui quando o serviço for implementado.
+Conteúdo do campo `payload` de cada mensagem. `saga_id` e `order_id` vão sempre no envelope, nunca no payload.
 
 ### Execução ([oficina-mecanica-execucao](https://github.com/phantosmia/oficina-mecanica-execucao))
 
@@ -171,6 +171,18 @@ Conteúdo do campo `payload` de cada mensagem já implementada. `saga_id` e `ord
 | `EnfileiramentoFalhou` | `etapa` (`diagnostico` ou `reparo`) e `reason` (`payload_invalido`, `os_ja_esta_na_execucao`, `os_nao_encontrada`, `status_<etapa atual>`) |
 | `DiagnosticoConcluido` | `notes`; `services`: `[{service_id, name, quantity, unit_price, subtotal}]`; `parts`: `[{part_id, name, quantity, unit_price, subtotal}]`; `labor_total`, `parts_total`, `total`. Preços copiados do Catálogo no momento do diagnóstico |
 | `ExecucaoFinalizada` | `notes` (pode ser `null`) |
+
+### Pagamento ([oficina-mecanica-pagamento](https://github.com/phantosmia/oficina-mecanica-pagamento))
+
+| Mensagem | Payload |
+|---|---|
+| `CriarCobranca` | `quote_id`, `customer`: `{name, email}`, `services` e `parts` (os itens do orçamento aprovado, com `name`, `quantity`, `unit_price`). O valor é recalculado a partir dos itens; um `total` no comando é ignorado. O orquestrador tem esses dados do `DiagnosticoConcluido` e da abertura da OS |
+| `CobrancaCriada` | `charge_id`, `provider_order_id` (ID da order no Mercado Pago), `checkout_url` (link de pagamento), `amount` |
+| `CobrancaFalhou` | `reason` (`payload_invalido`, `provedor_recusou` com `code` do Mercado Pago, `saga_ja_compensada`) |
+| `PagamentoConfirmado` | `charge_id`, `provider_order_id`, `amount` |
+| `PagamentoRecusado` | `charge_id`, `provider_order_id`, `amount`, `provider_status` (ex.: `expired`, `failed`), `provider_status_detail` |
+| `CancelarCobranca`, `EstornarPagamento` | vazio |
+| `CobrancaCancelada`, `PagamentoEstornado` | `charge_id` (`null` se a cobrança nunca chegou a existir) e `refunded`: se houve estorno (o Pagamento olha o estado real no Mercado Pago: cancelar uma cobrança que acabou de ser paga vira estorno, e estornar uma que não foi paga vira cancelamento) |
 
 ### Orçamento ([oficina-mecanica-orcamento](https://github.com/phantosmia/oficina-mecanica-orcamento))
 
@@ -216,6 +228,6 @@ Os prazos são configuráveis por variável de ambiente no OS Service. Para a de
 
 - **`ReservaRecusada`**: concluir um diagnóstico pedindo mais peças do que o saldo do Estoque.
 - **`OrcamentoRecusado`**: clicar em "recusar" no link do e-mail de orçamento.
-- **`PagamentoRecusado`**: pagar no sandbox do Mercado Pago com um cartão de teste configurado para ser recusado (compensa com `CancelarCobranca`, `CancelarOrcamento` e `LiberarPecas`).
+- **`PagamentoRecusado`**: deixar a cobrança expirar sem pagamento (reduzir `PAYMENT_EXPIRATION` no Pagamento, por exemplo para `PT2M`); a reconciliação detecta a expiração. Compensa com `CancelarCobranca`, `CancelarOrcamento` e `LiberarPecas`. No Checkout Pro, um cartão recusado (titular `OTHE`) não encerra a cobrança: o comprador pode tentar de novo com outro meio, então a recusa definitiva vem da expiração.
 - **Prazo expirado**: reduzir o prazo de aprovação ou de pagamento e não responder.
 - **Participante fora do ar**: escalar o Deployment da Execução para 0 réplicas antes do pagamento. A saga fica em `ENFILEIRANDO_REPARO`, reenvia o comando e, ao reativar o serviço, continua de onde parou. Mantendo o serviço fora do ar até esgotar as tentativas, ela compensa (`EstornarPagamento`, `CancelarOrcamento`, `DevolverPecas`).
