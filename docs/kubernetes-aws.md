@@ -101,6 +101,42 @@ Este repositório lê os outputs dos outros dois **automaticamente**, via `terra
 
 O backend remoto do Terraform fica em `infra/backend` e cria S3 para state e DynamoDB para lock — os repositórios `oficina-mecanica-infra-kubernetes` e `oficina-mecanica-infra-banco-dados` reaproveitam o mesmo bucket/tabela, só com uma `key` de state diferente cada um.
 
+## Provisionamento completo no AWS Academy Lab
+
+Com os microsserviços, cada um dos outros 5 serviços (`oficina-mecanica-catalogo`, `-estoque`, `-orcamento`, `-pagamento` e `-execucao`) tem um `infra/` próprio e um workflow `deploy.yml` com o mesmo padrão. O Terraform de cada um cria:
+
+- o repositório **ECR** da imagem (`oficina-<ambiente>-<serviço>`);
+- a **mensageria** da [RFC-0007](rfcs/0007-mensageria-sqs-sns.md): o tópico SNS de eventos, a fila SQS de comandos e as filas com que o serviço assina tópicos de outros serviços, todas com DLQ;
+- o **banco** do serviço: RDS PostgreSQL próprio dentro da VPC de banco que já existe (Estoque e Pagamento) ou tabela DynamoDB (Catálogo, Orçamento e Execução).
+
+O deploy aplica esse Terraform, publica a imagem, cria o Secret Kubernetes com os secrets do GitHub e os outputs do Terraform, e aplica o overlay `aws-academy`. Neste repositório, `infra/aws/messaging.tf` cria a fila `os-saga-eventos`, que assina os tópicos dos 4 participantes.
+
+Os pods acessam SQS, SNS e DynamoDB com a role dos nodes do EKS, que no Lab é a `LabRole`, porque o Lab não permite IRSA ([ADR-0012](adrs/0012-labrole-como-role-dos-nodes-no-lab.md)).
+
+### Ordem de apply
+
+Cada repositório lê o state de quem vem antes, ou recursos que ele cria (tópicos e filas):
+
+1. `oficina-mecanica-infra-banco-dados`: VPC de banco e RDS do OS Service.
+2. `oficina-mecanica-infra-kubernetes`: VPC, EKS, peering com a VPC de banco e ECR do OS Service.
+3. `oficina-mecanica-catalogo`: o Estoque assina o tópico dele.
+4. `oficina-mecanica-estoque`, `-orcamento`, `-pagamento` e `-execucao`, em paralelo.
+5. `oficina-mecanica-fiap` (este): assina os tópicos dos 4 participantes e lê as filas de comando deles.
+6. `oficina-mecanica-lambda-auth`: lê o state do banco e do cluster.
+
+### Passo a passo depois de um reset do Lab
+
+1. Copiar as credenciais do painel "AWS Details" do Lab para `.aws_credentials` e conferir a conta com `aws sts get-caller-identity`.
+2. Se o bucket de state não existir, recriar o backend em `infra/backend` (a única peça aplicada localmente; ver a seção "Coisas que dependem do estado do AWS Academy Lab" de `docs/proximos-passos.md`). O nome do bucket tem o número da conta: se a conta mudou, atualize `TF_STATE_BUCKET` nos 9 repositórios.
+3. Atualizar as variables de IAM, que mudam a cada sessão do Lab: `EKS_CLUSTER_ROLE_ARN` (sufixo aleatório, conferir com `aws iam list-roles`), `EKS_NODE_ROLE_ARN` e `LAMBDA_EXECUTION_ROLE_ARN` (ambas apontando para a `LabRole`) e `EKS_ADMIN_PRINCIPAL_ARN` (a role `voclabs`).
+4. Copiar as credenciais para os secrets dos 9 repositórios: `bash scripts/atualiza-credenciais-aws.sh`.
+5. Disparar os workflows na branch `homologacao`, na ordem acima: com um push da `main` para a `homologacao` ou com `workflow_dispatch` nessa branch.
+
+Problemas já vistos e o que fazer:
+
+- **`Kubernetes cluster unreachable: the server has asked for the client to provide credentials`** no apply do cluster, nos `helm_release`: a permissão de acesso ao cluster recém-criado ainda não tinha propagado. Basta reexecutar o job (`gh run rerun <id> --failed`).
+- **O GitHub não reexecuta runs com mais de 30 dias**: use `workflow_dispatch` na branch do ambiente.
+
 ## Fluxo Terraform sugerido
 
 Os três repositórios Terraform compartilham o mesmo backend S3 e se conectam via `terraform_remote_state` (ver [infra/aws/README.md](../infra/aws/README.md) e o [diagrama de dependência em arquitetura.md](arquitetura.md#diagrama-de-dependência-entre-os-repositórios-terraform)), então a única coisa que importa é a **ordem de apply**: banco → cluster → aplicação. Nenhum output precisa ser copiado manualmente entre eles.
