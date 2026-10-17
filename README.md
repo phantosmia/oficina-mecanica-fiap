@@ -1,5 +1,7 @@
 # oficina-mecanica-fiap
 
+[![Quality Gate](https://sonarcloud.io/api/project_badges/measure?project=phantosmia_oficina-mecanica-fiap&metric=alert_status)](https://sonarcloud.io/summary/overall?id=phantosmia_oficina-mecanica-fiap) [![Cobertura](https://sonarcloud.io/api/project_badges/measure?project=phantosmia_oficina-mecanica-fiap&metric=coverage)](https://sonarcloud.io/component_measures?id=phantosmia_oficina-mecanica-fiap&metric=coverage)
+
 MVP do back-end do Sistema Integrado de Atendimento e Execução de Serviços de uma oficina mecânica, desenvolvido em FastAPI com PostgreSQL, autenticação JWT, migrations Alembic, Docker, Kubernetes, Terraform AWS/EKS e pipeline GitHub Actions.
 
 ## Índice
@@ -186,7 +188,7 @@ Gerar relatório de segurança:
 bash scripts/security_scan.sh
 ```
 
-O pipeline de CI executa testes com PostgreSQL efêmero via Testcontainers, valida build Docker e valida Terraform/Kustomize.
+O pipeline de CI executa testes com PostgreSQL efêmero via Testcontainers, envia o código e a cobertura para análise no [SonarCloud](https://sonarcloud.io/organizations/phantosmia/projects) (o CI falha se o Quality Gate falhar; os 6 microsserviços seguem o mesmo padrão), valida build Docker e valida Terraform/Kustomize.
 
 Mais detalhes:
 
