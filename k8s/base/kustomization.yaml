@@ -7,4 +7,6 @@ resources:
   - postgres.yaml
   - migration-job.yaml
   - api.yaml
+  - worker.yaml
+  - outbox-relay.yaml
   - hpa.yaml

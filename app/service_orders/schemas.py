@@ -1,7 +1,6 @@
 from datetime import datetime
-from enum import StrEnum
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 
 from app.shared.validators import validate_document, validate_plate
 from app.service_orders.domain.value_objects import ServiceOrderStatus
@@ -31,57 +30,29 @@ class ServiceOrderVehicleInput(BaseModel):
         return validate_plate(value)
 
 
-class ServiceOrderServiceItemCreate(BaseModel):
-    service_id: int
-    quantity: int = Field(default=1, ge=1)
-
-
-class ServiceOrderPartItemCreate(BaseModel):
-    part_id: int
-    quantity: int = Field(default=1, ge=1)
-
-
 class ServiceOrderCreate(BaseModel):
+    """Abertura da OS (ADR-0010): só cliente, veículo e o problema relatado.
+    Os serviços e peças são definidos depois, pelo mecânico, no diagnóstico."""
+
     client: ServiceOrderClientInput
     vehicle: ServiceOrderVehicleInput
-    problem_description: str
-    requested_services: list[ServiceOrderServiceItemCreate] = Field(min_length=1)
-    requested_parts: list[ServiceOrderPartItemCreate] = Field(default_factory=list)
+    problem_description: str = Field(min_length=3)
 
 
-class ServiceOrderDiagnosisUpdate(BaseModel):
-    diagnosis_notes: str = Field(min_length=3)
-
-
-class ServiceOrderQuoteSend(BaseModel):
-    diagnosis_notes: str | None = None
-
-
-class ServiceOrderQuoteDecision(StrEnum):
-    APPROVE = "approve"
-    REJECT = "reject"
-
-
-class ServiceOrderQuoteResponse(BaseModel):
-    token: str = Field(min_length=20)
-    decision: ServiceOrderQuoteDecision
-
-
-class ServiceOrderServiceItemRead(BaseModel):
-    service_id: int
+class ServiceOrderItemRead(BaseModel):
+    kind: str = Field(description="servico ou peca")
+    item_id: str
     name: str
     quantity: int
     unit_price: float
     subtotal: float
 
 
-class ServiceOrderPartItemRead(BaseModel):
-    part_id: int
-    name: str
-    sku: str
-    quantity: int
-    unit_price: float
-    subtotal: float
+class StatusChangeRead(BaseModel):
+    from_status: str | None
+    to_status: str
+    reason: str
+    at: datetime
 
 
 class ServiceOrderSummary(BaseModel):
@@ -105,13 +76,13 @@ class ServiceOrderRead(ServiceOrderSummary):
     parts_total: float
     quote_sent_at: datetime | None = None
     approved_at: datetime | None = None
+    paid_at: datetime | None = None
     started_at: datetime | None = None
     finished_at: datetime | None = None
     delivered_at: datetime | None = None
-    services: list[ServiceOrderServiceItemRead]
-    parts: list[ServiceOrderPartItemRead]
-
-    model_config = ConfigDict(from_attributes=True)
+    cancelled_at: datetime | None = None
+    items: list[ServiceOrderItemRead]
+    status_history: list[StatusChangeRead]
 
 
 class ServiceOrderTracking(BaseModel):
@@ -121,13 +92,27 @@ class ServiceOrderTracking(BaseModel):
     vehicle_plate: str
     quote_total: float
     created_at: datetime
-    quote_sent_at: datetime | None = None
-    approved_at: datetime | None = None
-    started_at: datetime | None = None
-    finished_at: datetime | None = None
-    delivered_at: datetime | None = None
+    items: list[ServiceOrderItemRead]
+    status_history: list[StatusChangeRead]
 
 
 class AverageExecutionTimeRead(BaseModel):
     finished_orders: int
     average_minutes: float
+
+
+class SagaRead(BaseModel):
+    """Estado da saga da OS (para acompanhar o fluxo distribuído)."""
+
+    saga_id: str
+    order_id: int
+    state: str
+    pending_compensations: list[str]
+    final_status: str | None
+    failure_reason: str | None
+    waiting_for: str | None = Field(description="Último comando enviado, se a saga espera a resposta dele")
+    attempts: int
+    deadline_at: datetime | None
+    data: dict
+    created_at: datetime
+    updated_at: datetime | None

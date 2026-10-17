@@ -21,6 +21,9 @@ jobs:
     steps:
       - name: Checkout do código
         uses: actions/checkout@v4
+        with:
+          # Histórico completo: o SonarCloud usa o blame para separar o código novo.
+          fetch-depth: 0
 
       - name: Configurar Python 3.12
         uses: actions/setup-python@v5
@@ -54,6 +57,12 @@ jobs:
         # O Docker já está disponível no runner ubuntu-latest, dispensando um
         # passo dedicado para subir o banco.
         run: poetry run python -m pytest
+
+      - name: Análise do SonarCloud
+        # Configuração em sonar-project.properties; usa o coverage.xml do passo anterior.
+        uses: SonarSource/sonarqube-scan-action@v5
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
 
   build:
     name: Build da aplicação

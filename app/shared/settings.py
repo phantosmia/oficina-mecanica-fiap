@@ -46,6 +46,19 @@ class Settings:
     smtp_from: str
     smtp_username: str
     smtp_password: str
+    # Mensageria da saga (RFC-0007): o OS Service manda comandos para a fila de
+    # cada participante e recebe as respostas/eventos em os-saga-eventos.
+    aws_region: str
+    saga_events_queue_url: str
+    command_queue_urls: dict[str, str]
+    worker_wait_seconds: int
+    outbox_poll_interval_seconds: float
+    deadline_check_interval_seconds: float
+    # Prazos da saga (docs/saga.md, "Prazos")
+    saga_reply_timeout_seconds: float
+    saga_approval_timeout_seconds: float
+    saga_payment_timeout_seconds: float
+    saga_max_attempts: int
 
 
 settings = Settings(
@@ -65,4 +78,19 @@ settings = Settings(
     smtp_from=os.getenv("SMTP_FROM", "noreply@oficina.local"),
     smtp_username=os.getenv("SMTP_USERNAME", ""),
     smtp_password=os.getenv("SMTP_PASSWORD", ""),
+    aws_region=os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-east-1")),
+    saga_events_queue_url=os.getenv("SAGA_EVENTS_QUEUE_URL", ""),
+    command_queue_urls={
+        "estoque": os.getenv("ESTOQUE_COMMANDS_QUEUE_URL", ""),
+        "execucao": os.getenv("EXECUCAO_COMMANDS_QUEUE_URL", ""),
+        "orcamento": os.getenv("ORCAMENTO_COMMANDS_QUEUE_URL", ""),
+        "pagamento": os.getenv("PAGAMENTO_COMMANDS_QUEUE_URL", ""),
+    },
+    worker_wait_seconds=int(os.getenv("WORKER_WAIT_SECONDS", "10")),
+    outbox_poll_interval_seconds=float(os.getenv("OUTBOX_POLL_INTERVAL_SECONDS", "1")),
+    deadline_check_interval_seconds=float(os.getenv("DEADLINE_CHECK_INTERVAL_SECONDS", "15")),
+    saga_reply_timeout_seconds=float(os.getenv("SAGA_REPLY_TIMEOUT_SECONDS", str(5 * 60))),
+    saga_approval_timeout_seconds=float(os.getenv("SAGA_APPROVAL_TIMEOUT_SECONDS", str(7 * 24 * 3600))),
+    saga_payment_timeout_seconds=float(os.getenv("SAGA_PAYMENT_TIMEOUT_SECONDS", str(4 * 24 * 3600))),
+    saga_max_attempts=int(os.getenv("SAGA_MAX_ATTEMPTS", "3")),
 )

@@ -2,7 +2,7 @@
 
 | | |
 |---|---|
-| **Status** | Aceito |
+| **Status** | Substituído por [RFC-0007](../rfcs/0007-mensageria-sqs-sns.md) e [ADR-0008](0008-saga-orquestrada-no-os-service.md) (Fase 4, microsserviços com mensageria) |
 | **Data** | 2026-04-21 |
 
 ## Contexto

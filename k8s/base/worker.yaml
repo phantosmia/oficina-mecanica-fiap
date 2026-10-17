@@ -1,0 +1,66 @@
+# Worker do orquestrador da saga: consome os eventos dos participantes
+# (fila os-saga-eventos) e verifica os prazos. Idempotente; 1 réplica basta.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: oficina-mecanica-worker
+  namespace: oficina-mecanica
+  labels:
+    app.kubernetes.io/name: oficina-mecanica-worker
+    app.kubernetes.io/part-of: oficina-mecanica
+spec:
+  replicas: 1
+  revisionHistoryLimit: 3
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: oficina-mecanica-worker
+      app.kubernetes.io/part-of: oficina-mecanica
+  strategy:
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: oficina-mecanica-worker
+        app.kubernetes.io/part-of: oficina-mecanica
+    spec:
+      initContainers:
+        - name: wait-for-migrations
+          image: oficina-mecanica-fiap:latest
+          imagePullPolicy: Always
+          command:
+            - poetry
+            - run
+            - python
+            - scripts/wait_for_migrations.py
+          envFrom:
+            - configMapRef:
+                name: oficina-mecanica-config
+            - secretRef:
+                name: oficina-mecanica-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+      containers:
+        - name: worker
+          image: oficina-mecanica-fiap:latest
+          imagePullPolicy: Always
+          args: ["worker"]
+          envFrom:
+            - configMapRef:
+                name: oficina-mecanica-config
+            - secretRef:
+                name: oficina-mecanica-secret
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          resources:
+            requests:
+              cpu: 50m
+              memory: 192Mi
+            limits:
+              cpu: 300m
+              memory: 384Mi

@@ -50,7 +50,7 @@ run = "poetry install"
 
 [tasks.db-up]
 description = "Sobe apenas o PostgreSQL local"
-run = "docker compose up -d db"
+run = "docker compose up -d os-db"
 
 [tasks.db-down]
 description = "Derruba os containers locais"
@@ -58,7 +58,7 @@ run = "docker compose down"
 
 [tasks.db-logs]
 description = "Mostra logs do PostgreSQL local"
-run = "docker compose logs -f db"
+run = "docker compose logs -f os-db"
 
 [tasks.migrate]
 description = "Aplica migrations Alembic no banco configurado"
@@ -89,11 +89,11 @@ description = "Gera relatórios de segurança"
 run = "bash scripts/security_scan.sh"
 
 [tasks.compose-up]
-description = "Sobe API e banco via Docker Compose"
+description = "Sobe os 6 microsserviços + LocalStack + Mailpit via Docker Compose"
 run = "docker compose up --build"
 
 [tasks.compose-down]
-description = "Derruba API e banco via Docker Compose"
+description = "Derruba o sistema do Docker Compose"
 run = "docker compose down"
 
 [tasks.k8s-local-render]

@@ -1,64 +1,365 @@
+# Sistema completo da Fase 4 rodando localmente: os 6 microsserviços, cada
+# um com API, worker e relay da outbox, mais a infraestrutura compartilhada
+# (LocalStack emulando SQS, SNS e DynamoDB; Mailpit como caixa de e-mail).
+#
+# Pré-requisito: os repositórios dos serviços clonados ao lado deste
+# (../oficina-mecanica-catalogo, ../oficina-mecanica-estoque, ...): as
+# imagens são construídas a partir deles.
+#
+# Pagamento: para falar com o sandbox do Mercado Pago, crie
+# ../oficina-mecanica-pagamento/.env com MERCADO_PAGO_ACCESS_TOKEN (credenciais
+# de TESTE) e MERCADO_PAGO_PAYER_EMAIL_OVERRIDE (e-mail @testuser.com).
+#
+# Portas no host:
+#   8000 OS Service   8001 Catálogo   8002 Estoque   8003 Execução
+#   8004 Orçamento    8005 Pagamento  8025 Mailpit   4566 LocalStack
+
+x-aws: &aws
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_REGION: us-east-1
+  AWS_ENDPOINT_URL: http://localstack:4566
+  JWT_SECRET_KEY: change-me-in-production
+  ADMIN_USERNAME: admin
+  SMTP_ENABLED: "true"
+  SMTP_HOST: mailpit
+  SMTP_PORT: "1025"
+  SMTP_FROM: oficina@oficina.local
+
+x-queues: &queues
+  SAGA_EVENTS_QUEUE_URL: http://localstack:4566/000000000000/os-saga-eventos
+  ESTOQUE_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/estoque-comandos
+  EXECUCAO_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/execucao-comandos
+  ORCAMENTO_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/orcamento-comandos
+  PAGAMENTO_COMMANDS_QUEUE_URL: http://localstack:4566/000000000000/pagamento-comandos
+
+x-healthcheck-ready: &healthcheck-ready
+  test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/ready')"]
+  interval: 5s
+  timeout: 5s
+  retries: 30
+  start_period: 10s
+
+x-after-localstack: &after-localstack
+  localstack:
+    condition: service_healthy
+
 services:
-  db:
+  # ── Infraestrutura compartilhada ───────────────────────────────────────────
+
+  localstack:
+    image: localstack/localstack:4
+    environment:
+      SERVICES: dynamodb,sns,sqs
+    ports:
+      - "4566:4566"
+    healthcheck:
+      test: ["CMD", "curl", "-sf", "http://localhost:4566/_localstack/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+
+  mailpit:
+    image: axllent/mailpit:latest
+    ports:
+      - "8025:8025"
+
+  # ── OS Service (este repositório): OS + orquestrador da saga ─────────────
+
+  os-db:
     image: postgres:16-alpine
-    container_name: oficina-mecanica-db
     environment:
       POSTGRES_USER: oficina
       POSTGRES_PASSWORD: oficina
       POSTGRES_DB: oficina_mecanica
     ports:
-      - "5432:5432"
+      - "5432:5432"   # para rodar a API com Poetry fora do Compose (docs/execucao-local.md)
     volumes:
-      - oficina-pgdata:/var/lib/postgresql/data
+      - os-pgdata:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U oficina -d oficina_mecanica"]
-      interval: 10s
-      timeout: 5s
-      retries: 10
-      start_period: 10s
-    restart: unless-stopped
+      interval: 5s
+      timeout: 3s
+      retries: 20
 
-  api:
-    build:
-      context: .
-    container_name: oficina-mecanica-api
-    environment:
-      ADMIN_USERNAME: admin
-      ADMIN_PASSWORD: Admin@123
-      JWT_SECRET_KEY: change-me-in-production
-      ACCESS_TOKEN_EXPIRE_MINUTES: 60
-      PUBLIC_BASE_URL: http://localhost:8000
-      POSTGRES_HOST: db
+  os-api:
+    build: .
+    environment: &os-env
+      <<: [*aws, *queues]
+      POSTGRES_HOST: os-db
       POSTGRES_PORT: "5432"
       POSTGRES_USER: oficina
       POSTGRES_PASSWORD: oficina
       POSTGRES_DB: oficina_mecanica
-      # Notificações por e-mail (desabilitadas por padrão)
-      # Para habilitar, defina SMTP_ENABLED=true e preencha as demais variáveis
-      SMTP_ENABLED: "false"
-      SMTP_HOST: ""
-      SMTP_PORT: "587"
-      SMTP_FROM: ""
-      SMTP_USERNAME: ""
-      SMTP_PASSWORD: ""
+      ADMIN_PASSWORD: Admin@123
+      PUBLIC_BASE_URL: http://localhost:8000
+      BOOTSTRAP_LOCAL_RESOURCES: "true"
+      # Prazos curtos para a demonstração (padrão: 5 min, 7 dias, 4 dias).
+      SAGA_REPLY_TIMEOUT_SECONDS: "60"
+      SAGA_APPROVAL_TIMEOUT_SECONDS: "600"
+      SAGA_PAYMENT_TIMEOUT_SECONDS: "900"
+      DEADLINE_CHECK_INTERVAL_SECONDS: "10"
     ports:
       - "8000:8000"
     depends_on:
-      db:
+      os-db:
         condition: service_healthy
+      <<: *after-localstack
     healthcheck:
-      test:
-        [
-          "CMD",
-          "python",
-          "-c",
-          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')",
-        ]
-      interval: 30s
-      timeout: 10s
-      retries: 5
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
       start_period: 15s
-    restart: unless-stopped
+
+  os-worker:
+    build: .
+    command: ["worker"]
+    environment:
+      <<: *os-env
+      BOOTSTRAP_LOCAL_RESOURCES: "false"
+    depends_on:
+      os-api:
+        condition: service_healthy
+
+  os-relay:
+    build: .
+    command: ["relay"]
+    environment:
+      <<: *os-env
+      BOOTSTRAP_LOCAL_RESOURCES: "false"
+    depends_on:
+      os-api:
+        condition: service_healthy
+
+  # ── Catálogo (DynamoDB) ──────────────────────────────────────────────────
+
+  catalogo-api:
+    build: ../oficina-mecanica-catalogo
+    environment: &catalogo-env
+      <<: *aws
+      CATALOG_TABLE_NAME: oficina-catalogo
+      CATALOG_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:catalogo-eventos
+      BOOTSTRAP_LOCAL_RESOURCES: "true"
+      SEED_ON_START: "true"
+    ports:
+      - "8001:8000"
+    depends_on: *after-localstack
+    healthcheck: *healthcheck-ready
+
+  catalogo-relay:
+    build: ../oficina-mecanica-catalogo
+    command: ["relay"]
+    environment:
+      <<: *catalogo-env
+      SEED_ON_START: "false"
+    depends_on:
+      catalogo-api:
+        condition: service_healthy
+      estoque-api:
+        condition: service_healthy  # a fila do Estoque precisa assinar o tópico antes dos eventos dos dados de exemplo
+
+  # ── Estoque (PostgreSQL) ─────────────────────────────────────────────────
+
+  estoque-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: estoque
+      POSTGRES_PASSWORD: estoque
+      POSTGRES_DB: oficina_estoque
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U estoque -d oficina_estoque"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  estoque-migrate:
+    build: ../oficina-mecanica-estoque
+    command: ["migrate"]
+    environment: &estoque-env
+      <<: [*aws, *queues]
+      POSTGRES_HOST: estoque-db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: estoque
+      POSTGRES_PASSWORD: estoque
+      POSTGRES_DB: oficina_estoque
+      ESTOQUE_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:estoque-eventos
+      ESTOQUE_CATALOG_EVENTS_QUEUE_URL: http://localstack:4566/000000000000/estoque-catalogo-eventos
+      SEED_ON_MIGRATE: "true"
+    depends_on:
+      estoque-db:
+        condition: service_healthy
+
+  estoque-api:
+    build: ../oficina-mecanica-estoque
+    environment:
+      <<: *estoque-env
+      BOOTSTRAP_LOCAL_RESOURCES: "true"
+    ports:
+      - "8002:8000"
+    depends_on:
+      estoque-migrate:
+        condition: service_completed_successfully
+      <<: *after-localstack
+    healthcheck: *healthcheck-ready
+
+  estoque-worker:
+    build: ../oficina-mecanica-estoque
+    command: ["worker"]
+    environment: *estoque-env
+    depends_on:
+      estoque-api:
+        condition: service_healthy
+
+  estoque-relay:
+    build: ../oficina-mecanica-estoque
+    command: ["relay"]
+    environment: *estoque-env
+    depends_on:
+      estoque-api:
+        condition: service_healthy
+
+  # ── Execução (DynamoDB) ──────────────────────────────────────────────────
+
+  execucao-api:
+    build: ../oficina-mecanica-execucao
+    environment: &execucao-env
+      <<: [*aws, *queues]
+      EXECUCAO_TABLE_NAME: oficina-execucao
+      EXECUCAO_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:execucao-eventos
+      CATALOG_BASE_URL: http://catalogo-api:8000
+      BOOTSTRAP_LOCAL_RESOURCES: "true"
+    ports:
+      - "8003:8000"
+    depends_on: *after-localstack
+    healthcheck: *healthcheck-ready
+
+  execucao-worker:
+    build: ../oficina-mecanica-execucao
+    command: ["worker"]
+    environment:
+      <<: *execucao-env
+      BOOTSTRAP_LOCAL_RESOURCES: "false"
+    depends_on:
+      execucao-api:
+        condition: service_healthy
+
+  execucao-relay:
+    build: ../oficina-mecanica-execucao
+    command: ["relay"]
+    environment:
+      <<: *execucao-env
+      BOOTSTRAP_LOCAL_RESOURCES: "false"
+    depends_on:
+      execucao-api:
+        condition: service_healthy
+
+  # ── Orçamento (DynamoDB) ─────────────────────────────────────────────────
+
+  orcamento-api:
+    build: ../oficina-mecanica-orcamento
+    environment: &orcamento-env
+      <<: [*aws, *queues]
+      ORCAMENTO_TABLE_NAME: oficina-orcamento
+      ORCAMENTO_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:orcamento-eventos
+      PUBLIC_BASE_URL: http://localhost:8004
+      BOOTSTRAP_LOCAL_RESOURCES: "true"
+    ports:
+      - "8004:8000"
+    depends_on: *after-localstack
+    healthcheck: *healthcheck-ready
+
+  orcamento-worker:
+    build: ../oficina-mecanica-orcamento
+    command: ["worker"]
+    environment:
+      <<: *orcamento-env
+      BOOTSTRAP_LOCAL_RESOURCES: "false"
+    depends_on:
+      orcamento-api:
+        condition: service_healthy
+
+  orcamento-relay:
+    build: ../oficina-mecanica-orcamento
+    command: ["relay"]
+    environment:
+      <<: *orcamento-env
+      BOOTSTRAP_LOCAL_RESOURCES: "false"
+    depends_on:
+      orcamento-api:
+        condition: service_healthy
+
+  # ── Pagamento (PostgreSQL + Mercado Pago sandbox) ────────────────────────
+
+  pagamento-db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: pagamento
+      POSTGRES_PASSWORD: pagamento
+      POSTGRES_DB: oficina_pagamento
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U pagamento -d oficina_pagamento"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  pagamento-migrate:
+    build: ../oficina-mecanica-pagamento
+    command: ["migrate"]
+    env_file:
+      - path: ../oficina-mecanica-pagamento/.env
+        required: false
+    environment: &pagamento-env
+      <<: [*aws, *queues]
+      POSTGRES_HOST: pagamento-db
+      POSTGRES_PORT: "5432"
+      POSTGRES_USER: pagamento
+      POSTGRES_PASSWORD: pagamento
+      POSTGRES_DB: oficina_pagamento
+      PAGAMENTO_EVENTS_TOPIC_ARN: arn:aws:sns:us-east-1:000000000000:pagamento-eventos
+      PUBLIC_BASE_URL: http://localhost:8005
+      RECONCILE_INTERVAL_SECONDS: "15"
+    depends_on:
+      pagamento-db:
+        condition: service_healthy
+
+  pagamento-api:
+    build: ../oficina-mecanica-pagamento
+    env_file:
+      - path: ../oficina-mecanica-pagamento/.env
+        required: false
+    environment:
+      <<: *pagamento-env
+      BOOTSTRAP_LOCAL_RESOURCES: "true"
+    ports:
+      - "8005:8000"
+    depends_on:
+      pagamento-migrate:
+        condition: service_completed_successfully
+      <<: *after-localstack
+    healthcheck: *healthcheck-ready
+
+  pagamento-worker:
+    build: ../oficina-mecanica-pagamento
+    command: ["worker"]
+    env_file:
+      - path: ../oficina-mecanica-pagamento/.env
+        required: false
+    environment: *pagamento-env
+    depends_on:
+      pagamento-api:
+        condition: service_healthy
+
+  pagamento-relay:
+    build: ../oficina-mecanica-pagamento
+    command: ["relay"]
+    env_file:
+      - path: ../oficina-mecanica-pagamento/.env
+        required: false
+    environment: *pagamento-env
+    depends_on:
+      pagamento-api:
+        condition: service_healthy
 
 volumes:
-  oficina-pgdata:
+  os-pgdata:

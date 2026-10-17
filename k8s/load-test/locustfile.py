@@ -59,12 +59,10 @@ class OficinaMecanicaApiUser(HttpUser):
         self._get_protected("/service-orders", "GET /service-orders")
 
     @task(2)
-    def list_services(self) -> None:
-        self._get_protected("/services", "GET /services")
-
-    @task(2)
-    def list_parts(self) -> None:
-        self._get_protected("/parts", "GET /parts")
+    def average_execution_time(self) -> None:
+        # Catálogo e peças saíram deste serviço na Fase 4 (microsserviços de
+        # Catálogo e Estoque); a métrica de execução também acessa o banco.
+        self._get_protected("/service-orders/metrics/average-execution-time", "GET /service-orders/metrics/average-execution-time")
 
     def _get_protected(self, path: str, name: str) -> Response:
         return self.client.get(path, headers=self.auth_headers, name=name)

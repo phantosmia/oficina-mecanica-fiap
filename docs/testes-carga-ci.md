@@ -2,26 +2,37 @@
 
 ## Testes automatizados
 
-Os testes utilizam **Testcontainers** para provisionar um PostgreSQL efêmero por execução. Basta ter o Docker disponível e rodar:
-
 ```bash
 poetry run pytest
 ```
 
-O fluxo automático é:
+- **PostgreSQL de verdade** via **Testcontainers**: no início da sessão, `tests/conftest.py` sobe um `postgres:16-alpine` numa porta aleatória e aponta a `DATABASE_URL` da aplicação para ele; ao final, o container é destruído. A cada teste, o schema é recriado por migrations (`alembic downgrade base` + `upgrade head`), por isso as migrations precisam ser reversíveis.
+- Para usar um banco já existente em vez do Testcontainers, defina **`TEST_DATABASE_URL`**. De propósito, os testes **não** usam `DATABASE_URL` diretamente: eles apagam o schema a cada caso, e `DATABASE_URL` pode estar apontando para um banco de verdade no ambiente de quem roda.
+- **SQS e SNS** simulados pelo [moto](https://github.com/getmoto/moto).
+- A cobertura mínima configurada é de `80%` (`pyproject.toml`), sobre todo o pacote `app`.
 
-1. No início da sessão, `tests/conftest.py` sobe um container `postgres:16-alpine` em uma porta aleatória.
-2. A `DATABASE_URL` da aplicação é configurada para apontar para esse container.
-3. A cada teste, o schema é resetado por migrations (`alembic downgrade base` + `alembic upgrade head`).
-4. Ao final da sessão, o container é destruído.
+| Arquivo | O que cobre |
+|---|---|
+| `tests/test_saga_state_machine.py` | Máquina de estados da saga, sem banco: cada transição, cada ponto de falha com suas compensações em ordem, prazos, reenvio e intervenção manual (tabelas de `docs/saga.md`) |
+| `tests/test_orchestrator.py` | Orquestrador com PostgreSQL: transação única, idempotência, evento sem saga, prazos, compensação parada e reenvio |
+| `tests/test_service_order_api.py` | API de OS: abertura iniciando a saga, itens do diagnóstico, listagem, entrega, rastreio público por CPF ou token |
+| `tests/test_messaging.py` | Relay enviando cada comando à fila do participante certo; eventos chegando pelo tópico assinado |
+| `tests/features/fluxo_ordem_de_servico.feature` + `tests/test_bdd_fluxo_os.py` | **BDD** (Gherkin em português, `pytest-bdd`): fluxo completo da abertura à entrega e três fluxos com compensação |
 
-Caso `DATABASE_URL` já esteja definida no ambiente, o Testcontainers não é acionado e os testes usam a conexão fornecida.
+### BDD
 
-A cobertura mínima configurada é de `80%` para os domínios críticos.
+O PDF da Fase 4 pede pelo menos um fluxo completo testado com BDD. Os cenários estão em [`tests/features/fluxo_ordem_de_servico.feature`](../tests/features/fluxo_ordem_de_servico.feature), escritos em português (`# language: pt`):
+
+- **Fluxo completo, da abertura à entrega**: cada passo da saga, com o comando enviado a cada participante e o status da OS em cada etapa.
+- **Cliente recusa o orçamento**: as peças reservadas são liberadas e a OS termina `recusada`.
+- **Pagamento não concluído**: cobrança, orçamento e reserva desfeitos, um de cada vez, nessa ordem.
+- **Falha depois do pagamento**: estorno, cancelamento do orçamento e devolução das peças.
+
+A OS é aberta e entregue pela API de verdade, com PostgreSQL; os outros microsserviços são simulados publicando para o orquestrador os eventos que publicariam. Cada microsserviço tem a própria suíte de testes no seu repositório, e o fluxo com os seis rodando juntos é validado no `docker-compose.yml` (ver [Execução local](execucao-local.md)).
 
 ## Teste de carga com Locust
 
-O cenário de carga fica em [k8s/load-test/locustfile.py](../k8s/load-test/locustfile.py). Ele autentica com o usuário admin, consulta endpoints protegidos e mistura chamadas leves (`/health`) com chamadas que acessam o banco (`/db-status`, `/clients`, `/vehicles`, `/service-orders`, `/services` e `/parts`).
+O cenário de carga fica em [k8s/load-test/locustfile.py](../k8s/load-test/locustfile.py). Ele autentica com o usuário admin, consulta endpoints protegidos e mistura chamadas leves (`/health`) com chamadas que acessam o banco (`/db-status`, `/clients`, `/vehicles`, `/service-orders` e `/service-orders/metrics/average-execution-time`).
 
 As execuções locais usam a imagem Docker oficial do Locust, então não é necessário instalar o Locust no ambiente Poetry da API.
 
@@ -71,8 +82,32 @@ Etapas do job `tests`:
 
 1. Instalar Python `3.12`, Poetry e dependências do projeto.
 2. Executar `poetry run pytest` com cobertura mínima. O Testcontainers provisiona automaticamente um PostgreSQL efêmero no runner.
+3. Enviar o código e o `coverage.xml` para análise no SonarCloud (ver abaixo). O passo espera o Quality Gate e falha junto com ele.
 
-O job `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
+O job
+
+### SonarCloud
+
+Os 6 microsserviços são analisados no [SonarCloud](https://sonarcloud.io/organizations/phantosmia/projects), na organização `phantosmia`, com um projeto por repositório (`phantosmia_<repositório>`). Todos seguem o mesmo padrão:
+
+- `sonar-project.properties` na raiz com a organização, a chave do projeto, as pastas de código (`app`, mais `scripts` nos outros serviços) e de testes, e o `coverage.xml`.
+- Passo **Análise do SonarCloud** no job de testes, logo depois do pytest, com `SonarSource/sonarqube-scan-action` e o secret `SONAR_TOKEN` do repositório. O checkout usa o histórico completo (`fetch-depth: 0`), que o SonarCloud usa para separar o código novo.
+- `sonar.qualitygate.wait=true`: o CI falha se o Quality Gate falhar, tanto na `main` quanto nos PRs.
+- Badges de Quality Gate e cobertura no topo do README de cada repositório.
+
+Os projetos foram criados pela API do SonarCloud e não pelo import do GitHub. Por isso a análise automática (*Automatic Analysis*) do SonarCloud fica desligada, e a análise vem só do CI. Se ela fosse ligada, o SonarCloud recusaria a análise do CI.
+
+Nos serviços que medem `app` e `scripts`, a cobertura usa a raiz como único `source` (`[tool.coverage.run]` no `pyproject.toml`). Com um `source` por pasta, o `coverage.xml` traz caminhos relativos a cada uma, e o SonarCloud não consegue distinguir os `__init__.py` que existem nas duas. `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
+
+Na **primeira análise de uma branch**, o Quality Gate vem `NONE` (não calculado), porque a definição de código novo ainda não tem linha de base, e o passo falha. Basta reexecutar o job (`gh run rerun <id> --failed`): da segunda análise em diante, o gate é calculado. Isso só se repete se o projeto for recriado no SonarCloud.
+
+### Proteção da `main`
+
+A `main` dos 6 repositórios é protegida com o mesmo padrão:
+
+- Mudanças só por **pull request**, com 0 aprovações obrigatórias (o GitHub não deixa aprovar o próprio PR).
+- **Checks obrigatórios** do GitHub Actions: `Testes automatizados` (que inclui o SonarCloud), o build da imagem (`Build da aplicação` neste repositório, `Build da imagem` nos outros) e `Validar manifests Kubernetes`; aqui também `Validar Terraform AWS`.
+- A proteção vale **também para admin**; force push e remoção da branch ficam bloqueados.
 
 ## Deploy manual AWS/EKS
 
