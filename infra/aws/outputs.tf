@@ -30,3 +30,31 @@ output "rds_endpoint" {
   description = "Endpoint do RDS, lido via terraform_remote_state do repositório oficina-mecanica-infra-banco-dados."
   value       = data.terraform_remote_state.database.outputs.rds_endpoint
 }
+
+# Mensageria da saga (messaging.tf): substituem os REPLACE_WITH_*_QUEUE_URL do
+# overlay aws-academy no deploy.
+
+output "saga_events_queue_url" {
+  description = "Fila SQS onde o orquestrador recebe os eventos dos participantes da saga."
+  value       = aws_sqs_queue.saga_events.url
+}
+
+output "estoque_commands_queue_url" {
+  description = "Fila de comandos do Estoque (criada pelo Terraform do oficina-mecanica-estoque)."
+  value       = data.aws_sqs_queue.participant_commands["estoque"].url
+}
+
+output "execucao_commands_queue_url" {
+  description = "Fila de comandos da Execução (criada pelo Terraform do oficina-mecanica-execucao)."
+  value       = data.aws_sqs_queue.participant_commands["execucao"].url
+}
+
+output "orcamento_commands_queue_url" {
+  description = "Fila de comandos do Orçamento (criada pelo Terraform do oficina-mecanica-orcamento)."
+  value       = data.aws_sqs_queue.participant_commands["orcamento"].url
+}
+
+output "pagamento_commands_queue_url" {
+  description = "Fila de comandos do Pagamento (criada pelo Terraform do oficina-mecanica-pagamento)."
+  value       = data.aws_sqs_queue.participant_commands["pagamento"].url
+}

@@ -222,6 +222,9 @@ jobs:
               values["tf_state_region"] = os.environ["TF_BACKEND_REGION"]
 
           infra_environment = os.environ.get("INFRA_ENVIRONMENT") or "dev"
+          # Entra no nome das filas e tópicos da saga (messaging.tf), que os
+          # outros 5 serviços criam com o mesmo prefixo.
+          values["environment"] = infra_environment
           values["kubernetes_state_key"] = f"kubernetes/{infra_environment}/terraform.tfstate"
           values["database_state_key"] = f"database/{infra_environment}/terraform.tfstate"
 
@@ -286,6 +289,11 @@ jobs:
             "cluster_name",
             "ecr_repository_url",
             "rds_endpoint",
+            "saga_events_queue_url",
+            "estoque_commands_queue_url",
+            "execucao_commands_queue_url",
+            "orcamento_commands_queue_url",
+            "pagamento_commands_queue_url",
           ]
           with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as github_output:
             for key in keys:
@@ -357,6 +365,11 @@ jobs:
           sed -i \
             -e "s|REPLACE_WITH_RDS_ENDPOINT|${{ steps.tf.outputs.rds_endpoint }}|g" \
             -e "s|http://localhost:8000|${PUBLIC_BASE_URL}|g" \
+            -e "s|REPLACE_WITH_SAGA_EVENTS_QUEUE_URL|${{ steps.tf.outputs.saga_events_queue_url }}|g" \
+            -e "s|REPLACE_WITH_ESTOQUE_COMMANDS_QUEUE_URL|${{ steps.tf.outputs.estoque_commands_queue_url }}|g" \
+            -e "s|REPLACE_WITH_EXECUCAO_COMMANDS_QUEUE_URL|${{ steps.tf.outputs.execucao_commands_queue_url }}|g" \
+            -e "s|REPLACE_WITH_ORCAMENTO_COMMANDS_QUEUE_URL|${{ steps.tf.outputs.orcamento_commands_queue_url }}|g" \
+            -e "s|REPLACE_WITH_PAGAMENTO_COMMANDS_QUEUE_URL|${{ steps.tf.outputs.pagamento_commands_queue_url }}|g" \
             k8s/overlays/aws-academy/patch-configmap-rds.yaml
 
           sed -i \

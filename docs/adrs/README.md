@@ -19,6 +19,7 @@ Uma ADR não é apagada quando a decisão muda — marque o status como **Substi
 | [0009](0009-persistencia-poliglota-por-servico.md) | Persistência poliglota, com um banco por serviço | Aceito; linha de Orçamento & Pagamento substituída pela [ADR-0011](0011-persistencia-orcamento-e-pagamento.md) |
 | [0010](0010-diagnostico-define-o-orcamento.md) | O diagnóstico define o orçamento | Aceito |
 | [0011](0011-persistencia-orcamento-e-pagamento.md) | Orçamento em DynamoDB e Pagamento em PostgreSQL | Aceito |
+| [0012](0012-labrole-como-role-dos-nodes-no-lab.md) | LabRole como role dos nodes do EKS no AWS Academy Lab | Aceito |
 
 ## Template
 
