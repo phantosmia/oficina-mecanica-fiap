@@ -38,9 +38,10 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 ## 5. CI/CD e qualidade (em cada um dos 6 repositórios)
 
-- [ ] Pipeline independente: build, testes, SonarCloud, deploy no EKS. **SonarCloud** (decidido em 2026-10-10): gratuito para repositório público, que é o caso dos 6; o plano Free analisa a `main` (análise de PR é limitada). **Depende da usuária**: login no SonarCloud com o GitHub, importar a organização `phantosmia` no plano **Free** (se pedir cartão ou plano pago, parar: alternativa é o SonarQube Community dentro do CI) e gerar um token.
+- [x] **SonarCloud** (2026-10-17): organização `phantosmia` (trial do plano pago, que **cai sozinho para o Free em 31/10**; o Free cobre repositório público) e um projeto por repositório (`phantosmia_<repositório>`, criados pela API, branch principal renomeada para `main`). Nos 6 CIs, passo de análise depois dos testes, com o `coverage.xml` e `sonar.qualitygate.wait=true` (o CI falha junto com o Quality Gate); secret `SONAR_TOKEN` nos 6 repositórios. PRs: [fiap#44](https://github.com/phantosmia/oficina-mecanica-fiap/pull/44), [catalogo#2](https://github.com/phantosmia/oficina-mecanica-catalogo/pull/2), [estoque#2](https://github.com/phantosmia/oficina-mecanica-estoque/pull/2), [orcamento#2](https://github.com/phantosmia/oficina-mecanica-orcamento/pull/2), [pagamento#3](https://github.com/phantosmia/oficina-mecanica-pagamento/pull/3), [execucao#2](https://github.com/phantosmia/oficina-mecanica-execucao/pull/2). Token local em `.sonar_token` (no `.gitignore`). Detalhes em `docs/testes-carga-ci.md`.
+- [ ] Pipeline independente com **deploy no EKS** em cada um dos 6 (depende da etapa 6 e de credenciais válidas do Lab).
 - [ ] Proteção da branch `main` (PR obrigatório + checagens obrigatórias).
-- [ ] Evidência de cobertura no README (badge do SonarCloud ou print).
+- [x] Evidência de cobertura no README: badges de Quality Gate e cobertura do SonarCloud nos 6 (mostram valor depois da primeira análise da `main`, ou seja, depois do merge dos PRs acima).
 
 ## 6. Infraestrutura
 

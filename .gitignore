@@ -139,6 +139,7 @@ celerybeat.pid
 .env
 .envrc
 .aws_credentials
+.sonar_token
 .venv
 env/
 venv/
