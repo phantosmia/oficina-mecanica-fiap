@@ -82,8 +82,22 @@ Etapas do job `tests`:
 
 1. Instalar Python `3.12`, Poetry e dependências do projeto.
 2. Executar `poetry run pytest` com cobertura mínima. O Testcontainers provisiona automaticamente um PostgreSQL efêmero no runner.
+3. Enviar o código e o `coverage.xml` para análise no SonarCloud (ver abaixo). O passo espera o Quality Gate e falha junto com ele.
 
-O job `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
+O job
+
+### SonarCloud
+
+Os 6 microsserviços são analisados no [SonarCloud](https://sonarcloud.io/organizations/phantosmia/projects), na organização `phantosmia`, com um projeto por repositório (`phantosmia_<repositório>`). Todos seguem o mesmo padrão:
+
+- `sonar-project.properties` na raiz com a organização, a chave do projeto, as pastas de código (`app`, mais `scripts` nos outros serviços) e de testes, e o `coverage.xml`.
+- Passo **Análise do SonarCloud** no job de testes, logo depois do pytest, com `SonarSource/sonarqube-scan-action` e o secret `SONAR_TOKEN` do repositório. O checkout usa o histórico completo (`fetch-depth: 0`), que o SonarCloud usa para separar o código novo.
+- `sonar.qualitygate.wait=true`: o CI falha se o Quality Gate falhar, tanto na `main` quanto nos PRs.
+- Badges de Quality Gate e cobertura no topo do README de cada repositório.
+
+Os projetos foram criados pela API do SonarCloud e não pelo import do GitHub. Por isso a análise automática (*Automatic Analysis*) do SonarCloud fica desligada, e a análise vem só do CI. Se ela fosse ligada, o SonarCloud recusaria a análise do CI.
+
+Nos serviços que medem `app` e `scripts`, a cobertura usa a raiz como único `source` (`[tool.coverage.run]` no `pyproject.toml`). Com um `source` por pasta, o `coverage.xml` traz caminhos relativos a cada uma, e o SonarCloud não consegue distinguir os `__init__.py` que existem nas duas. `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
 
 ## Deploy manual AWS/EKS
 
