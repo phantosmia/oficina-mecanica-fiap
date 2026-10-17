@@ -34,8 +34,15 @@ Configuração fora do código:
 
   A versão final (`source = ["."]` + `omit`) dá o mesmo relatório arquivo a arquivo e os mesmos totais em todos os serviços.
 
+## Proteção da `main` (mesma sessão, depois do merge dos 6 PRs)
+
+- **Primeira análise da `main` falhou nos 6**: o Quality Gate da `main` veio `NONE` (não calculado), e o scanner com `qualitygate.wait` trata isso como falha. O motivo é que a definição de código novo (`previous_version`, padrão da organização) ainda não tem linha de base na primeira análise de uma branch. Reexecutar o job (`gh run rerun --failed`) resolveu nos 6: a segunda análise calcula o gate (`OK`). **Se os projetos forem recriados no SonarCloud, isso acontece de novo uma vez.** Ficou documentado em `docs/testes-carga-ci.md`.
+- **Proteção aplicada nos 6** pela API do GitHub (`PUT /branches/main/protection`). O `oficina-mecanica-fiap` já tinha uma proteção que só exigia PR, sem checks e contornável por admin; agora os 6 seguem o mesmo padrão:
+  - PR obrigatório com **0 aprovações**: a usuária é a única pessoa no projeto, e o GitHub não deixa aprovar o próprio PR. Exigir 1 aprovação travaria todo merge.
+  - **Checks obrigatórios** (`strict: false`): `Testes automatizados` (inclui o passo do SonarCloud), o job de build (`Build da imagem`, ou `Build da aplicação` no OS Service) e `Validar manifests Kubernetes`; no OS Service, também `Validar Terraform AWS`. Os checks ficam vinculados ao GitHub Actions (`app_id` 15368), para que nenhum outro app consiga publicar um status com o mesmo nome. O check `SonarCloud Code Analysis` do app do SonarCloud não entra, porque só aparece onde o app está ligado ao projeto.
+  - **`enforce_admins: true`**, sem force push e sem apagar a branch. Sem isso, a dona do repositório contorna tudo, e a proteção vira só um aviso.
+
 ## Pendências para a próxima sessão
 
-- Fazer o merge dos 6 PRs e conferir a primeira análise da `main` (os badges só mostram valor depois disso).
-- Proteção da `main` nos 6 repositórios: PR obrigatório e checks obrigatórios (testes com o Sonar, build).
 - O resto das etapas 5 a 7 continua como estava em [2026-10-10](2026-10-10-servico-orcamento.md): justificativa da saga no README, diagrama geral, Terraform/deploy, New Relic, Postman, vídeo e PDF.
+- Conferir os badges depois de 31/10, quando o trial do SonarCloud cai para o Free.
