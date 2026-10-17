@@ -24,6 +24,13 @@ Mesma sessão do [SonarCloud](2026-10-17-sonarcloud.md). Com as credenciais do L
 - **A saga funciona na AWS**: a OS 1 (CPF `78181367464`), aberta pela API pública, chegou a `AGUARDANDO_DIAGNOSTICO` em menos de 6 s. Isso exige a volta inteira: comando na fila da Execução, evento no tópico dela, SNS entregando na `os-saga-eventos` e o worker do OS Service processando.
 - **Não validado ainda**: o fluxo além do diagnóstico. As tabelas e os bancos novos estão vazios, então é preciso semear o Catálogo e o saldo do Estoque antes. Ficou como item no checklist.
 
+## Fluxo completo validado na AWS (mesma sessão)
+
+- **Seed**: `python -m scripts.seed` dentro dos pods, **primeiro o Estoque** (5 saldos) e depois o Catálogo (5 serviços e 5 peças). Na ordem inversa, o `PecaCadastrada` do Catálogo criaria o saldo zerado antes, e o seed do Estoque não altera peça que já tem saldo.
+- **OS 1, fluxo feliz**: diagnóstico na Execução (1 revisão de freios + 2 discos), reserva no Estoque e orçamento gerado em ~4 s (R$ 700,00 = 200 + 2 × 250). O link de aprovação já vem com o endereço do LoadBalancer do Orçamento (o ajuste de `PUBLIC_BASE_URL` do deploy funcionou). A usuária aprovou pela página e pagou no checkout do Mercado Pago (sandbox), e a confirmação veio sozinha (`processed / accredited`). A baixa levou o disco de 15 para 13 e a reserva ficou `confirmada`; depois, reparo e entrega. Histórico: `recebida → em_diagnostico → aguardando_aprovacao → aguardando_pagamento → em_execucao → finalizada → entregue`.
+- **Compensações**: OS 2, orçamento recusado pela rota pública: reserva de 3 discos liberada (reservado 3 → 0), status `recusada`. OS 3, 999 discos: `ReservaRecusada`, status `cancelada`.
+- **Checkout do Mercado Pago: "Uma das partes com as quais você está tentando efetuar o pagamento é de teste"**. Aparece quando quem paga não é o comprador de teste. Na janela anônima, o checkout entra como convidado (que conta como pessoa real) e não pede login. O que funcionou: na janela anônima, entrar primeiro em mercadopago.com.br com o **comprador de teste** e só então abrir o link de pagamento. Registrado no README do Pagamento.
+
 ## Decisões tomadas e por quê
 
 - **[ADR-0012](../adrs/0012-labrole-como-role-dos-nodes-no-lab.md): `LabRole` como role dos nodes.** A `LabEksNodeRole` não tem SQS, SNS nem DynamoDB. `iam:PutRolePolicy`, `AttachRolePolicy` e `CreateRole` são negados, então não há IRSA nem como adicionar permissões a ela. `iam:PassRole` sobre a `LabRole` é permitido, e a simulação de IAM confirmou que ela cobre os nodes (CNI, ECR) e os serviços. Chaves de acesso no Secret foram descartadas porque expiram em horas.
@@ -37,7 +44,6 @@ Mesma sessão do [SonarCloud](2026-10-17-sonarcloud.md). Com as credenciais do L
 
 ## Pendências para a próxima sessão
 
-- Semear o Catálogo e o Estoque na AWS e validar o fluxo completo e as compensações (ver o checklist).
 - Exigir o job "Validar Terraform" na proteção da `main` dos 5 serviços.
 - `JWT_SECRET_KEY` e `ADMIN_PASSWORD` continuam com os valores padrão do código nos 6 serviços. Funciona, porque todos usam o mesmo valor, mas é o débito técnico que já estava listado.
 - Observabilidade (New Relic nos 6 com *trace context*), Postman, vídeo e PDF. Os diagramas ficam por último, a pedido da usuária.
