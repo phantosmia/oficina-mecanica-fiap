@@ -99,6 +99,16 @@ Os projetos foram criados pela API do SonarCloud e não pelo import do GitHub. P
 
 Nos serviços que medem `app` e `scripts`, a cobertura usa a raiz como único `source` (`[tool.coverage.run]` no `pyproject.toml`). Com um `source` por pasta, o `coverage.xml` traz caminhos relativos a cada uma, e o SonarCloud não consegue distinguir os `__init__.py` que existem nas duas. `build` valida o build da imagem Docker com `docker build` e roda após `tests` ser concluído com sucesso.
 
+Na **primeira análise de uma branch**, o Quality Gate vem `NONE` (não calculado), porque a definição de código novo ainda não tem linha de base, e o passo falha. Basta reexecutar o job (`gh run rerun <id> --failed`): da segunda análise em diante, o gate é calculado. Isso só se repete se o projeto for recriado no SonarCloud.
+
+### Proteção da `main`
+
+A `main` dos 6 repositórios é protegida com o mesmo padrão:
+
+- Mudanças só por **pull request**, com 0 aprovações obrigatórias (o GitHub não deixa aprovar o próprio PR).
+- **Checks obrigatórios** do GitHub Actions: `Testes automatizados` (que inclui o SonarCloud), o build da imagem (`Build da aplicação` neste repositório, `Build da imagem` nos outros) e `Validar manifests Kubernetes`; aqui também `Validar Terraform AWS`.
+- A proteção vale **também para admin**; force push e remoção da branch ficam bloqueados.
+
 ## Deploy manual AWS/EKS
 
 O workflow [.github/workflows/deploy-aws.yml](../.github/workflows/deploy-aws.yml) executa deploy real no EKS via `workflow_dispatch`. Ele **não** provisiona cluster, node group ou ECR — isso é feito separadamente no repositório [`oficina-mecanica-infra-kubernetes`](https://github.com/phantosmia/oficina-mecanica-infra-kubernetes); este workflow só roda o Terraform de `infra/aws` (secret da API + IRSA do seu service account) e o deploy Kubernetes.
