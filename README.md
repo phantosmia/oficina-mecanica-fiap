@@ -26,6 +26,7 @@ Os detalhes foram separados em artigos complementares para manter este README en
 | [Execução local](docs/execucao-local.md) | Mise, Poetry, o sistema completo no Docker Compose e o passo a passo de uma OS atravessando os serviços |
 | [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR e Secrets Manager |
 | [API e autenticação](docs/api.md) | JWT, endpoints públicos, endpoints administrativos e notas de uso |
+| [Coleção Postman](postman/README.md) | Fluxo completo da OS pelos 6 serviços e as compensações, com ambientes `local` e `homologacao` |
 | [Notificações por e-mail](docs/email.md) | SMTP, provedores compatíveis e configuração de envio |
 | [Testes, carga e CI/CD](docs/testes-carga-ci.md) | Pytest, Testcontainers, BDD, Locust, HPA e GitHub Actions |
 | [Segurança](docs/seguranca.md) | Bandit, pip-audit, Trivy e relatórios gerados |
@@ -99,7 +100,7 @@ docker compose up --build
 | Pagamento | `http://localhost:8005/docs` |
 | Mailpit (e-mails enviados) | `http://localhost:8025` |
 
-O Pagamento fala com o sandbox do Mercado Pago se existir `../oficina-mecanica-pagamento/.env` com as credenciais de teste (ver o README de lá). O passo a passo de uma OS atravessando os serviços está em [docs/execucao-local.md](docs/execucao-local.md).
+O Pagamento fala com o sandbox do Mercado Pago se existir `../oficina-mecanica-pagamento/.env` com as credenciais de teste (ver o README de lá). O passo a passo de uma OS atravessando os serviços está em [docs/execucao-local.md](docs/execucao-local.md). A [coleção Postman](postman/README.md) faz o mesmo fluxo, incluindo as compensações, com ambientes para o Compose e para a AWS.
 
 Para parar:
 
