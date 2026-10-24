@@ -151,7 +151,7 @@ Todas as mensagens (comandos e eventos) usam o mesmo envelope JSON no corpo:
 
 E repete nos `MessageAttributes` do SQS/SNS: `type`, `saga_id`, `order_id`, `correlation_id` e os cabeçalhos de *trace context* do New Relic (`newrelic`, `traceparent`, `tracestate`). Os atributos permitem filtrar assinaturas SNS por tipo e propagar o trace sem abrir o corpo da mensagem.
 
-Quem consome continua o trace: cada mensagem vira uma transação `Message/SQS/sqs/<type>` no New Relic, ligada à de quem publicou, com `saga_id` e `order_id` como atributos customizados (no New Relic, `FROM Transaction SELECT * WHERE order_id = '42'` traz os traces de uma OS em todos os serviços). Os dois também entram em toda linha de log JSON emitida ao processar a mensagem e ao publicá-la pelo relay (`saga_log_context`, em `app/shared/logging_config.py` de cada serviço).
+Quem consome continua o trace: cada mensagem vira uma transação `Message/SQS/sqs/<type>` no New Relic, ligada à de quem publicou, com `saga_id` e `order_id` como atributos customizados (no New Relic, `FROM Transaction SELECT traceId, appName, name WHERE order_id = 42` traz as transações de uma OS em todos os serviços; `order_id` é numérico, sem aspas. Os spans de um trace saem com ``FROM Span SELECT * WHERE `trace.id` = '<traceId>'``, com crases, por causa do ponto no nome). Os dois também entram em toda linha de log JSON emitida ao processar a mensagem e ao publicá-la pelo relay (`saga_log_context`, em `app/shared/logging_config.py` de cada serviço).
 
 Regras para todos os consumidores:
 
