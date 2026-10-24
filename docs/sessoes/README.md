@@ -14,3 +14,4 @@ Ver instrução de uso no `CLAUDE.md` da raiz do repositório ("Continuidade ent
 - [2026-10-10 — Orçamento, Pagamento e o orquestrador da saga](2026-10-10-servico-orcamento.md)
 - [2026-10-17 — SonarCloud nos 6 microsserviços](2026-10-17-sonarcloud.md)
 - [2026-10-17 — Terraform e deploy dos 6 microsserviços na AWS](2026-10-17-provisionamento-fase4.md)
+- [2026-10-24 — Correlação de logs e traces pela saga](2026-10-24-correlacao-logs-saga.md)
