@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from app.shared.email import IEmailNotifier, NullEmailNotifier, order_finished_message
 from app.shared.events import Envelope
 from app.shared.exceptions import NotFoundError
+from app.shared.logging_config import saga_log_context
 from app.shared.telemetry import record_service_order_status_changed
 from app.service_orders.application.use_cases import seconds_between
 from app.service_orders.domain.entities import ServiceOrderEntity
@@ -81,18 +82,19 @@ class SagaOrchestrator:
             due = uow.list_due(now)
         acted = 0
         for saga_id in due:
-            try:
-                with self._uow_factory() as uow:
-                    saga = uow.get(saga_id, for_update=True)
-                    decision = saga.on_deadline(now, self._timeouts)
-                    if decision.ignored:
-                        logger.info("prazo da saga %s: %s", saga_id, decision.ignored_reason)
-                    change = self._apply(uow, saga, decision, now)
-                    uow.commit()
-                self._after_commit(saga, decision, change)
-                acted += 0 if decision.ignored else 1
-            except Exception:
-                logger.exception("falha ao tratar o prazo da saga %s", saga_id)
+            with saga_log_context(saga_id):
+                try:
+                    with self._uow_factory() as uow:
+                        saga = uow.get(saga_id, for_update=True)
+                        decision = saga.on_deadline(now, self._timeouts)
+                        if decision.ignored:
+                            logger.info("prazo da saga %s: %s", saga_id, decision.ignored_reason)
+                        change = self._apply(uow, saga, decision, now)
+                        uow.commit()
+                    self._after_commit(saga, decision, change)
+                    acted += 0 if decision.ignored else 1
+                except Exception:
+                    logger.exception("falha ao tratar o prazo da saga %s", saga_id)
         return acted
 
     # ── admin ────────────────────────────────────────────────────────────────

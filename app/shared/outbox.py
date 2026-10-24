@@ -16,6 +16,7 @@ import boto3
 from sqlalchemy import select
 from sqlalchemy.orm import Session, sessionmaker
 
+from app.shared.logging_config import saga_log_context
 from app.shared.models import OutboxMessage
 from app.shared.settings import settings
 
@@ -70,9 +71,11 @@ class OutboxRelay:
                 .with_for_update(skip_locked=True)
             ).all()
             for message in pending:
-                self._sender.send(message.destination, message.envelope, dict(message.trace_headers or {}))
-                message.published_at = datetime.now(UTC)
-                session.flush()
-                logger.info("comando enviado type=%s destino=%s message_id=%s", message.message_type, message.destination, message.message_id)
+                envelope = message.envelope
+                with saga_log_context(envelope.get("saga_id"), envelope.get("order_id")):
+                    self._sender.send(message.destination, envelope, dict(message.trace_headers or {}))
+                    message.published_at = datetime.now(UTC)
+                    session.flush()
+                    logger.info("comando enviado type=%s destino=%s message_id=%s", message.message_type, message.destination, message.message_id)
             session.commit()
             return len(pending)
