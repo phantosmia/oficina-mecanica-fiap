@@ -51,4 +51,8 @@ Depois do merge dos 5 PRs e do redeploy, a OS 2 foi aberta e diagnosticada com o
 
 ## Pendente
 
-- Cadastrar `NEW_RELIC_LICENSE_KEY` nos 5 repositórios dos serviços (environment `homologacao`), redeployar e conferir um trace distribuído no New Relic. A chave é a mesma do OS Service.
+- Nada de observabilidade pendente. Próximo item da ordem combinada: coleção Postman.
+
+## License key do New Relic nos 5 serviços
+
+O New Relic só mostra a chave inteira quando ela é criada, então não dava para copiar a do OS Service. A usuária criou uma license key nova (*Ingest - License*) na mesma conta. Ela foi cadastrada como `NEW_RELIC_LICENSE_KEY` no environment `homologacao` dos 5 serviços, e o OS Service continua com a dele. A cópia local está em `.new-relic`, excluída do git via `.git/info/exclude`.
