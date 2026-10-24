@@ -45,6 +45,10 @@ A conta continuava a `340919830422`, mas tudo tinha sido apagado, inclusive o bu
 - **A primeira mensagem de cada worker recém-iniciado some do New Relic.** O agente descarta a transação que dispara o registro da aplicação (`startup_timeout` padrão 0). Na OS 1, `EnfileirarDiagnostico` e `GerarOrcamento` não apareceram, e o `OrcamentoGerado` ficou sem trace pai. Correção: `NEW_RELIC_STARTUP_TIMEOUT=10` no Deployment do worker (só nele; na API atrasaria a primeira requisição e as probes): [fiap#50](https://github.com/phantosmia/oficina-mecanica-fiap/pull/50), [estoque#5](https://github.com/phantosmia/oficina-mecanica-estoque/pull/5), [orcamento#5](https://github.com/phantosmia/oficina-mecanica-orcamento/pull/5), [pagamento#7](https://github.com/phantosmia/oficina-mecanica-pagamento/pull/7), [execucao#5](https://github.com/phantosmia/oficina-mecanica-execucao/pull/5).
 - **A consulta de exemplo do `docs/saga.md` estava errada**: `order_id` chega como número (`order_id = 42`, sem aspas), e `trace.id` precisa de crases no NRQL. Corrigido no fiap#50.
 
+## Verificação da correção (mesma sessão)
+
+Depois do merge dos 5 PRs e do redeploy, a OS 2 foi aberta e diagnosticada com os workers recém-iniciados. As primeiras mensagens de cada um (`EnfileirarDiagnostico`, `DiagnosticoEnfileirado`, `GerarOrcamento`) apareceram no New Relic, todas com trace pai, e o trace do diagnóstico passou por 5 apps (78 spans), incluindo o Orçamento, que ficava de fora na OS 1.
+
 ## Pendente
 
 - Cadastrar `NEW_RELIC_LICENSE_KEY` nos 5 repositórios dos serviços (environment `homologacao`), redeployar e conferir um trace distribuído no New Relic. A chave é a mesma do OS Service.
