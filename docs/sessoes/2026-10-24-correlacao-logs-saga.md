@@ -59,9 +59,13 @@ Depois do merge dos 5 PRs e do redeploy, a OS 2 foi aberta e diagnosticada com o
 - **Testada com Newman contra o `homologacao`**: 50 requisições e 69 asserções, sem falhas, incluindo as duas compensações. O trecho do pagamento (manual no navegador) e o ambiente `local` não foram rodados nesta sessão.
 - **O arquivo da coleção foi gerado por um script Python**, que não foi versionado. A partir daqui, a fonte é o JSON: editar no Postman e exportar.
 
+## Justificativa da saga no README (mesma sessão)
+
+O PDF pede que a escolha entre orquestração e coreografia seja justificada no README ([fiap#54](https://github.com/phantosmia/oficina-mecanica-fiap/pull/54)). A seção nova resume a ADR-0008 com o fluxo atual da ADR-0010, sem alterar as ADRs: por que orquestração, por que o orquestrador fica no OS Service, as garantias do rollback e o que se aceitou em troca. Ao revisar contra o código, apareceu um erro na tabela de prazos do `docs/saga.md`: o prazo de pagamento vencido também envia `CancelarCobranca`. Corrigido no mesmo PR.
+
 ## Pendente
 
-- Próximo item da ordem combinada: a seção do README do OS Service que justifica a escolha da saga. Depois vêm os diagramas, o vídeo e o PDF.
+- Próximo item da ordem combinada: diagramas (arquitetura geral da Fase 4 e dependência entre os repositórios Terraform). Depois vêm o vídeo e o PDF.
 
 ## License key do New Relic nos 5 serviços
 
