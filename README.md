@@ -9,6 +9,7 @@ MVP do back-end do Sistema Integrado de Atendimento e Execução de Serviços de
 - [Documentação complementar](#documentação-complementar)
 - [Repositórios do projeto](#repositórios-do-projeto)
 - [Visão geral](#visão-geral)
+- [Saga Pattern: orquestração](#saga-pattern-orquestração)
 - [Stack](#stack)
 - [Como rodar rápido](#como-rodar-rápido)
 - [Kubernetes e AWS](#kubernetes-e-aws)
@@ -66,6 +67,59 @@ Este repositório é o **OS Service**: o dono das ordens de serviço e o **orque
 - migrations Alembic, Kubernetes (API, worker e relay), HPA, Locust, Terraform AWS/EKS e CI/CD
 - logs estruturados em JSON, correlacionados por requisição (`X-Request-ID`) e por trace/span da APM (New Relic); `saga_id`/`order_id` propagados nas mensagens
 - diagramas de arquitetura em [docs/arquitetura.md](docs/arquitetura.md) (da Fase 3; o diagrama da arquitetura de microsserviços está no checklist da Fase 4)
+
+## Saga Pattern: orquestração
+
+A abertura, o orçamento, a aprovação, o pagamento e a execução de uma OS passam por cinco serviços, cada um com seu próprio banco ([ADR-0009](docs/adrs/0009-persistencia-poliglota-por-servico.md)). Não existe uma transação que cubra todos eles. Até a Fase 3, aprovar o orçamento era um único `UPDATE` tudo ou nada no PostgreSQL; agora, se o pagamento falha depois que o Estoque já reservou as peças, alguém precisa desfazer a reserva. A saga faz isso: cada passo é uma transação local, e cada passo com efeito colateral tem uma **compensação** que o desfaz.
+
+Escolhemos uma **saga orquestrada**, com o **orquestrador dentro deste serviço** (`app/saga/`) ([ADR-0008](docs/adrs/0008-saga-orquestrada-no-os-service.md)). O orquestrador manda comandos para a fila de cada participante (SQS) e reage aos eventos que eles publicam (SNS → fila `os-saga-eventos`) ([RFC-0007](docs/rfcs/0007-mensageria-sqs-sns.md)).
+
+```mermaid
+flowchart LR
+    A[OS aberta] --> D[Diagnóstico<br/>Execução]
+    D --> R[Reserva de peças<br/>Estoque]
+    R --> O[Orçamento e aprovação<br/>Orçamento]
+    O --> P[Cobrança e pagamento<br/>Pagamento]
+    P --> B[Baixa das peças<br/>Estoque]
+    B --> E[Reparo<br/>Execução]
+    E --> F[OS finalizada]
+    R -. sem saldo .-> X[OS cancelada]
+    O -. recusado .-> C1[LiberarPecas]
+    O -. prazo vencido .-> C4[CancelarOrcamento<br/>LiberarPecas]
+    P -. recusado ou prazo .-> C2[CancelarCobranca<br/>CancelarOrcamento<br/>LiberarPecas]
+    B -. falhou .-> C3[EstornarPagamento<br/>CancelarOrcamento<br/>LiberarPecas]
+```
+
+O fluxo completo, a tabela de compensações por ponto de falha e os prazos estão em [`docs/saga.md`](docs/saga.md).
+
+### Por que orquestração, e não coreografia
+
+- **O fluxo é longo e cada ponto de falha desfaz uma coisa diferente.** São seis etapas e nove pontos de falha, cada um com sua lista de compensações em ordem inversa (recusar o orçamento libera a reserva; perder o prazo do pagamento cancela a cobrança no Mercado Pago, depois o orçamento, depois a reserva). Na coreografia, cada serviço precisaria conhecer os eventos dos outros para decidir quando e o que compensar, e essa regra ficaria espalhada em cinco repositórios. Na orquestração, ela é uma máquina de estados pura, num arquivo só (`app/saga/domain/saga.py`), testada estado por estado.
+- **Há esperas longas pelo cliente, com prazo.** A aprovação do orçamento e o pagamento dependem de uma pessoa. Alguém precisa saber que a OS 42 está esperando o pagamento desde ontem e agir quando o prazo vence. Na orquestração, esse alguém é o orquestrador, que guarda o prazo de cada saga e tem uma verificação periódica. Na coreografia, não haveria um dono natural para esse relógio.
+- **O estado de cada OS fica num lugar só.** `GET /service-orders/{id}/saga` mostra a etapa atual, o comando em espera, as tentativas, o prazo e as compensações pendentes. Na coreografia, responder "em que passo está a OS e o que falta desfazer?" exigiria juntar o estado de vários serviços.
+- **Os participantes ficam simples.** Cada um recebe um comando, executa e publica o resultado, sem saber em que fluxo está. Isso também os mantém reaproveitáveis: o Estoque reserva peças para quem pedir.
+
+### Por que o orquestrador fica no OS Service
+
+O OS Service é o dono da ordem de serviço, e a saga existe para fazer a OS andar. Com o orquestrador aqui, **avançar a saga, mudar o status da OS, gravar o histórico e enfileirar o próximo comando acontecem numa única transação local** (outbox). Num serviço separado, o estado da saga e o status da OS ficariam em bancos diferentes e precisariam de mais uma troca de mensagens, com prazo e reenvio, só para continuarem sincronizados. É também o desenho de referência do padrão (*Microservices Patterns*, Chris Richardson): a saga fica no serviço que é dono do agregado. O módulo `app/saga/` não importa os outros contextos do serviço, então pode ser extraído para um serviço próprio se um dia fizer sentido.
+
+### Como o rollback fica seguro
+
+- **Outbox transacional nos 6 serviços**: o comando ou evento é gravado na mesma transação do efeito colateral, e um relay o publica depois. Uma queda entre as duas coisas não perde nem duplica mensagem de forma inconsistente.
+- **Idempotência por `message_id`**: o orquestrador e os 4 participantes registram as mensagens que já processaram, na mesma transação do efeito. A entrega "pelo menos uma vez" do SQS pode repetir uma mensagem sem efeito duplicado.
+- **Compensações idempotentes e sempre confirmadas**: elas respondem com confirmação mesmo quando não havia nada a desfazer. O orquestrador as reenvia até receber a confirmação e só marca a OS como cancelada quando todas chegaram. Uma compensação que esgota as tentativas fica parada e visível para intervenção (`POST /service-orders/{id}/saga/retry`), nunca é abandonada.
+- **Prazos com reenvio**: participante que não responde recebe o comando de novo (até 3 vezes) antes de a saga compensar.
+- **Ponto sem volta explícito**: depois que o reparo entra na fila, as peças começam a ser usadas no carro e a saga não compensa mais. Problemas a partir dali são tratados pela oficina.
+
+### O que se aceitou em troca
+
+O OS Service concentra a coordenação e é o serviço mais crítico do sistema. Se ele cair, nenhuma saga avança, mas nenhuma se perde: as mensagens esperam nas filas e o estado está no banco. A troca valeu pela legibilidade do fluxo e por ter um único lugar para testar e acompanhar cada OS.
+
+### Onde ver funcionando
+
+- **Testes**: a máquina de estados tem testes unitários de cada transição e compensação (`tests/test_saga_state_machine.py`), e o fluxo completo e três compensações (recusa do orçamento, pagamento não concluído e falha depois do pagamento) estão em BDD (`tests/features/fluxo_ordem_de_servico.feature`).
+- **Na prática**: a [coleção Postman](postman/README.md) roda o fluxo completo e as compensações contra o Compose ou a AWS.
+- **No New Relic**: um trace distribuído acompanha a OS de serviço em serviço, e `saga_id`/`order_id` aparecem em todos os logs (ver [`docs/saga.md`](docs/saga.md#envelope-das-mensagens)).
 
 ## Stack
 

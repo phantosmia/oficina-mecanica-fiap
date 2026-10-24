@@ -56,7 +56,7 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 ## 7. Entregáveis da Fase 4
 
 - [ ] Diagrama geral da arquitetura final (microsserviços, bancos, comunicação).
-- [ ] README de cada repositório: evidência de cobertura (badge do SonarCloud) e link para o Swagger do ambiente deployado. No do OS Service, uma seção que **justifique a escolha da saga** (o PDF pede "documentar a escolha e justificar no README"; hoje o README só aponta para a ADR-0008).
+- [ ] README de cada repositório: evidência de cobertura (badge do SonarCloud) e link para o Swagger do ambiente deployado. No do OS Service, a seção que **justifica a escolha da saga** foi feita em 2026-10-24 ([fiap#54](https://github.com/phantosmia/oficina-mecanica-fiap/pull/54), seção "Saga Pattern: orquestração"); falta o link do Swagger deployado nos 6.
 - [x] **Coleção Postman** (2026-10-24, [`postman/`](../postman/README.md)): fluxo completo (abertura, diagnóstico, aprovação, pagamento, reparo, entrega, consulta do cliente com o token da Lambda) e as compensações de recusa e de estoque insuficiente; ambientes `local` e `homologacao` com as URLs dos 6 serviços; requisições *Aguardar* que repetem até a saga chegar ao status. Testada com Newman contra o `homologacao` (50 requisições, 69 asserções, sem falhas), menos o trecho do pagamento, que é manual no navegador.
 - [ ] Vídeo (até 15 min): fluxo completo, saga com falha e compensação, deploy automatizado com testes, monitoramento/rastreamento distribuído.
 - [ ] PDF de entrega: participantes, links dos repositórios, link do vídeo, diagrama, estratégia de saga, justificativa da divisão e das tecnologias.
