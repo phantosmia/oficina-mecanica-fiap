@@ -26,4 +26,4 @@ PRs iguais nos 6 repositórios (`feat/correlacao-logs-saga`): [fiap#49](https://
 
 ## Pendente
 
-- Cadastrar `NEW_RELIC_LICENSE_KEY` nos 5 repositórios dos serviços (environment `homologacao`), redeployar e conferir um trace distribuído no New Relic. A chave é a mesma do OS Service.
+- Redeployar os 5 serviços e conferir um trace distribuído no New Relic. O secret `NEW_RELIC_LICENSE_KEY` já foi cadastrado neles (environment `homologacao`). Como o New Relic só mostra a chave inteira quando ela é criada, a usuária criou uma license key nova (*Ingest - License*) na mesma conta; o OS Service continua com a dele. A cópia local está em `.new-relic`, excluída do git via `.git/info/exclude`.
