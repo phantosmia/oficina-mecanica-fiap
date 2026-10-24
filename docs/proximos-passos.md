@@ -57,7 +57,7 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 - [ ] Diagrama geral da arquitetura final (microsserviços, bancos, comunicação).
 - [ ] README de cada repositório: evidência de cobertura (badge do SonarCloud) e link para o Swagger do ambiente deployado. No do OS Service, uma seção que **justifique a escolha da saga** (o PDF pede "documentar a escolha e justificar no README"; hoje o README só aponta para a ADR-0008).
-- [ ] **Coleção Postman** do fluxo completo (abertura, diagnóstico, aprovação, pagamento, reparo, entrega), com variáveis para as URLs dos 6 serviços.
+- [x] **Coleção Postman** (2026-10-24, [`postman/`](../postman/README.md)): fluxo completo (abertura, diagnóstico, aprovação, pagamento, reparo, entrega, consulta do cliente com o token da Lambda) e as compensações de recusa e de estoque insuficiente; ambientes `local` e `homologacao` com as URLs dos 6 serviços; requisições *Aguardar* que repetem até a saga chegar ao status. Testada com Newman contra o `homologacao` (50 requisições, 69 asserções, sem falhas), menos o trecho do pagamento, que é manual no navegador.
 - [ ] Vídeo (até 15 min): fluxo completo, saga com falha e compensação, deploy automatizado com testes, monitoramento/rastreamento distribuído.
 - [ ] PDF de entrega: participantes, links dos repositórios, link do vídeo, diagrama, estratégia de saga, justificativa da divisão e das tecnologias.
 
@@ -74,7 +74,7 @@ Desenho decidido em 2026-10-03: [RFC-0006](rfcs/0006-decomposicao-em-microsservi
 
 - [ ] **Vídeo de demonstração**: **roteiro escrito** (`docs/roteiro-video-fase3.md`, untracked como o da Fase 2), cobrindo os 6 itens do PDF — autenticação com CPF, pipeline CI/CD, deploy automatizado, consumo das APIs protegidas, dashboard com análise ao vivo, e logs/traces —, com preparação obrigatória (o ambiente do Lab precisa ser verificado/re-provisionado antes), pontos de transparência sobre o que não está ativo (rota `/api/*` unificada, telemetria da Lambda no New Relic) e tabela de contingências. **Falta gravar** (até 15 min, YouTube/Vimeo público ou não listado).
 - [ ] **PDF único de entrega**: links dos 4 repositórios, link do vídeo, links das documentações (RFCs/ADRs/diagramas) e confirmação do usuário `soat-architecture` adicionado a todos os repositórios. Não iniciado.
-- [ ] **README de cada repositório — link para Swagger/Postman**: hoje os READMEs só apontam pro Swagger local (`http://localhost:8000/docs`). O PDF pede link pro Swagger/Postman das APIs — vale considerar linkar o Swagger do ambiente deployado (`http://<load-balancer>:8000/docs` de `homologacao`/`producao`, sabendo que o hostname muda a cada recriação do Service) ou publicar uma collection do Postman.
+- [ ] **README de cada repositório — link para Swagger/Postman**: hoje os READMEs só apontam pro Swagger local (`http://localhost:8000/docs`). O PDF pede link pro Swagger/Postman das APIs — vale considerar linkar o Swagger do ambiente deployado (`http://<load-balancer>:8000/docs` de `homologacao`/`producao`, sabendo que o hostname muda a cada recriação do Service) ou publicar uma collection do Postman. **Postman feito na Fase 4** ([`postman/`](../postman/README.md)), linkado no README do OS Service.
 
 ## Collaborators
 

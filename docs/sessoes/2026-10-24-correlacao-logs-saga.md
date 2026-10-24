@@ -49,9 +49,19 @@ A conta continuava a `340919830422`, mas tudo tinha sido apagado, inclusive o bu
 
 Depois do merge dos 5 PRs e do redeploy, a OS 2 foi aberta e diagnosticada com os workers recém-iniciados. As primeiras mensagens de cada um (`EnfileirarDiagnostico`, `DiagnosticoEnfileirado`, `GerarOrcamento`) apareceram no New Relic, todas com trace pai, e o trace do diagnóstico passou por 5 apps (78 spans), incluindo o Orçamento, que ficava de fora na OS 1.
 
+## Coleção Postman (mesma sessão)
+
+`postman/` com a coleção e os ambientes `local` e `homologacao` ([README](../../postman/README.md)).
+
+- **Requisições *Aguardar* para a parte assíncrona.** Elas repetem o mesmo item (`pm.execution.setNextRequest(pm.info.requestId)`, com intervalo de 2 a 4 s) até o status esperado. Assim o Collection Runner e o Newman passam pela saga sem `sleep` fixo. Usar o ID da requisição, e não o nome, evita confusão entre itens de mesmo nome em pastas diferentes.
+- **Ambiente `homologacao`.** Catálogo, Estoque e Execução não têm LoadBalancer, então são acessados por `kubectl port-forward` nas mesmas portas do Compose (8001 a 8003). Assim essas três URLs são iguais nos dois ambientes. Os endereços públicos ficam como placeholders, porque mudam a cada recriação.
+- **O prazo de pagamento vencido ficou de fora.** Esse terceiro caminho de compensação depende de esperar o prazo.
+- **Testada com Newman contra o `homologacao`**: 50 requisições e 69 asserções, sem falhas, incluindo as duas compensações. O trecho do pagamento (manual no navegador) e o ambiente `local` não foram rodados nesta sessão.
+- **O arquivo da coleção foi gerado por um script Python**, que não foi versionado. A partir daqui, a fonte é o JSON: editar no Postman e exportar.
+
 ## Pendente
 
-- Nada de observabilidade pendente. Próximo item da ordem combinada: coleção Postman.
+- Próximo item da ordem combinada: a seção do README do OS Service que justifica a escolha da saga. Depois vêm os diagramas, o vídeo e o PDF.
 
 ## License key do New Relic nos 5 serviços
 
