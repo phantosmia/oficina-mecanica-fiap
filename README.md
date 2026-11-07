@@ -21,7 +21,7 @@ Os detalhes foram separados em artigos complementares para manter este README en
 
 | Artigo | Conteúdo |
 |---|---|
-| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (ER, componentes C4, infraestrutura AWS, dependência entre repositórios, fluxo de deploy e sequência) |
+| [Arquitetura](docs/arquitetura.md) | Clean Architecture, estrutura de pastas, PostgreSQL, princípios aplicados e diagramas (visão geral dos microsserviços, ER, componentes C4, infraestrutura AWS, dependência entre repositórios, fluxo de deploy e sequência) |
 | [Regras de negócio](docs/regras-negocio.md) | Fluxo da OS pelos microsserviços, status, cálculo do orçamento, reserva e baixa de estoque, compensações e prazos |
 | [Execução local](docs/execucao-local.md) | Mise, Poetry, o sistema completo no Docker Compose e o passo a passo de uma OS atravessando os serviços |
 | [Kubernetes e AWS](docs/kubernetes-aws.md) | Manifests, overlays, HPA, Terraform, EKS, ECR e Secrets Manager |
@@ -65,7 +65,7 @@ Este repositório é o **OS Service**: o dono das ordens de serviço e o **orque
 - `docker-compose.yml` com **os 6 microsserviços** rodando juntos, LocalStack e Mailpit
 - migrations Alembic, Kubernetes (API, worker e relay), HPA, Locust, Terraform AWS/EKS e CI/CD
 - logs estruturados em JSON, correlacionados por requisição (`X-Request-ID`) e por trace/span da APM (New Relic); `saga_id`/`order_id` propagados nas mensagens
-- diagramas de arquitetura em [docs/arquitetura.md](docs/arquitetura.md) (da Fase 3; o diagrama da arquitetura de microsserviços está no checklist da Fase 4)
+- diagramas de arquitetura em [docs/arquitetura.md](docs/arquitetura.md), incluindo a visão geral dos 6 microsserviços e a ordem de apply dos 9 repositórios Terraform (gerados por código, em [docs/diagramas/](docs/diagramas/README.md))
 
 ## Stack
 
