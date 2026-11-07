@@ -130,12 +130,14 @@ Cada repositório lê o state de quem vem antes, ou recursos que ele cria (tópi
 2. Se o bucket de state não existir, recriar o backend em `infra/backend` (a única peça aplicada localmente; ver a seção "Coisas que dependem do estado do AWS Academy Lab" de `docs/proximos-passos.md`). O nome do bucket tem o número da conta: se a conta mudou, atualize `TF_STATE_BUCKET` nos 9 repositórios.
 3. Atualizar as variables de IAM, que mudam a cada sessão do Lab: `EKS_CLUSTER_ROLE_ARN` (sufixo aleatório, conferir com `aws iam list-roles`), `EKS_NODE_ROLE_ARN` e `LAMBDA_EXECUTION_ROLE_ARN` (ambas apontando para a `LabRole`) e `EKS_ADMIN_PRINCIPAL_ARN` (a role `voclabs`).
 4. Copiar as credenciais para os secrets dos 9 repositórios: `bash scripts/atualiza-credenciais-aws.sh`.
-5. Disparar os workflows na branch `homologacao`, na ordem acima: com um push da `main` para a `homologacao` ou com `workflow_dispatch` nessa branch.
+5. Disparar os workflows na branch `homologacao`, na ordem acima: com um push da `main` para a `homologacao` ou com `workflow_dispatch` nessa branch. **No OS Service, só o push funciona**: o `deploy-aws.yml` usa o environment `homologacao` no push, mas o environment `aws` no `workflow_dispatch`, e esse não tem as credenciais.
 
 Problemas já vistos e o que fazer:
 
 - **`Kubernetes cluster unreachable: the server has asked for the client to provide credentials`** no apply do cluster, nos `helm_release`: a permissão de acesso ao cluster recém-criado ainda não tinha propagado. Basta reexecutar o job (`gh run rerun <id> --failed`).
 - **O GitHub não reexecuta runs com mais de 30 dias**: use `workflow_dispatch` na branch do ambiente.
+- **`AccessDenied` em `s3:GetBucketObjectLockConfiguration`** no apply do `infra/backend` (SCP do Lab, visto em 2026-11-07): o bucket é criado, mas fica *tainted*. Rode `terraform untaint aws_s3_bucket.terraform_state` e depois `terraform plan -refresh=false -out=tfplan` e `terraform apply tfplan`, que não lê de novo a configuração bloqueada.
+- **Deploy verde sem pod novo**: o `workflow_dispatch` na `homologacao` publica o commit que está nela. Se a `main` com a mudança não foi levada para a `homologacao` antes, a imagem sai com a mesma tag e o Kubernetes não troca os pods (só o Job de migration roda de novo).
 
 ## Fluxo Terraform sugerido
 
