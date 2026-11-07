@@ -22,3 +22,9 @@
 - **A tabela do Terraform veio dos `.tf`, não da documentação.** O Mermaid antigo dizia que o `infra-kubernetes` só lê o `rds_secret_arn` do banco. Na verdade ele também lê `vpc_id`, `vpc_cidr_block` e `default_route_table_id`, que são usados no peering.
 - **`diagrams` fora das dependências do Poetry.** É ferramenta de documentação e precisa do Graphviz. O README de `docs/diagramas/` explica como gerar as imagens num venv à parte.
 - **O drawio de infraestrutura não foi mexido.** Ele continua descrevendo a Fase 3. A visão de microsserviços ficou no diagrama novo.
+
+## CI: push só na `main` (SonarCloud no plano Free)
+
+O PR #55 falhou no passo do SonarCloud com `Organization is not allowed to access data from non main branches`. O trial do plano pago acabou em 31/10 (ver [2026-10-17-sonarcloud](2026-10-17-sonarcloud.md)), e o plano Free analisa só a `main` e os pull requests. O CI do OS Service rodava em `push` de qualquer branch, então cada push numa branch de trabalho virava uma análise de branch, que agora é recusada. Os outros 5 serviços já rodavam só em `push` na `main` + `pull_request`, e o OS Service passou a fazer o mesmo. A análise do PR passou no plano Free.
+
+O run do `pull_request` também não aparecia no começo porque o PR estava em conflito com a `main`: o #54 tinha entrado depois que a branch foi criada a partir de uma `main` local desatualizada. Isso foi resolvido com um merge da `main` na branch.
