@@ -1,5 +1,19 @@
 # Arquitetura
 
+## Visão geral: microsserviços
+
+A aplicação é composta por 6 microsserviços no EKS, cada um com repositório, pipeline e banco próprios. Nenhum serviço acessa o banco de outro.
+
+![Arquitetura geral dos microsserviços](imgs/arquitetura_geral_fase4.png)
+
+- **OS Service** (este repositório): abre e acompanha a ordem de serviço e é o **orquestrador da saga** ([ADR-0008](adrs/0008-saga-orquestrada-no-os-service.md)). A entrada é pelo LoadBalancer. O login do cliente por CPF passa pelo API Gateway e pela Lambda, que consulta o PostgreSQL do OS Service.
+- **Participantes da saga**: Execução, Estoque, Orçamento e Pagamento. Recebem comandos do orquestrador e respondem com eventos, sempre por **SQS + SNS**: uma fila de comandos por participante, um tópico de eventos por serviço e a fila `os-saga-eventos` do orquestrador assinando os tópicos. No diagrama, a mensageria aparece como um nó só. O contrato completo está em [`saga.md`](saga.md).
+- **Catálogo**: fica fora da saga. A Execução consulta preços por **REST síncrono** ao concluir o diagnóstico, e o Catálogo publica `PecaCadastrada`, que o Estoque consome para criar o saldo.
+- **Persistência poliglota** ([ADR-0009](adrs/0009-persistencia-poliglota-por-servico.md), [ADR-0011](adrs/0011-persistencia-orcamento-e-pagamento.md)): PostgreSQL (RDS) no OS Service, no Estoque e no Pagamento; DynamoDB no Catálogo, no Orçamento e na Execução.
+- **Externos**: Mercado Pago (Checkout Pro) no Pagamento. Orçamento e Pagamento mandam e-mail ao cliente com o link de aprovação e o de pagamento, e cada um tem LoadBalancer público para esses links. Os 6 serviços enviam APM e traces distribuídos ao New Relic.
+
+Este diagrama e o de [dependência entre os repositórios Terraform](#diagrama-de-dependência-entre-os-repositórios-terraform) são gerados por código (biblioteca `diagrams`): ver [`diagramas/`](diagramas/README.md).
+
 ## Justificativa do banco de dados
 
 A primeira versão do MVP foi implementada com **SQLite** por simplicidade de setup local. Para esta evolução, o banco foi migrado para **PostgreSQL**, motivado por:
@@ -170,7 +184,7 @@ flowchart LR
 
 ## Diagrama da infraestrutura provisionada
 
-O diagrama abaixo representa os principais recursos provisionados na AWS e o fluxo de tráfego em runtime, agrupados por **função** (rede/cluster, aplicação, banco, observabilidade) em vez de por repositório Terraform — a divisão em 4 repositórios e a ordem de apply entre eles já têm um diagrama dedicado, [logo abaixo](#diagrama-de-dependência-entre-os-repositórios-terraform).
+O diagrama abaixo representa os principais recursos provisionados na AWS e o fluxo de tráfego em runtime, agrupados por **função** (rede/cluster, aplicação, banco, observabilidade) em vez de por repositório Terraform — a divisão em repositórios e a ordem de apply entre eles têm um diagrama dedicado, [logo abaixo](#diagrama-de-dependência-entre-os-repositórios-terraform).
 
 ![Diagrama da infraestrutura provisionada na AWS](imgs/diagrama_de_infraestrutura_oficina_mecanica_fiap.drawio.png)
 
@@ -184,37 +198,41 @@ O diagrama abaixo representa os principais recursos provisionados na AWS e o flu
 - O `Load Balancer Interno` encaminha para o `API Deployment / Service` dentro do `EKS Cluster` (subnets privadas). Também no cluster: `Alembic Migration Job`, os add-ons de plataforma (`HPA + metrics-server`) e o `nri-bundle` (New Relic Kubernetes integration, ADR-0007).
 - O `AWS Secrets Manager` guarda as credenciais da API, sincronizadas para o cluster via IRSA/External Secrets Operator.
 - **New Relic**: hoje só **2 dos 4 pontos do ADR-0007 estão ativos** — o `API Deployment / Service` reporta latência/erros via agente APM, e o `nri-bundle` envia métricas de infraestrutura do cluster; ambos aparecem como uma única seta "Envia dados de telemetria" no diagrama. A instrumentação da Lambda (layer) e a Cloud Integration para RDS/API Gateway existem no código dos respectivos repositórios mas não estão configuradas em nenhum ambiente hoje — ver débito técnico correspondente em `docs/proximos-passos.md`.
-- **Provisionamento e Pipeline**: o `Desenvolvedor` e o `GitHub Actions` publicam a imagem no `Amazon ECR` (Docker push) e executam `terraform apply` contra o backend remoto (`Terraform State S3` + `DynamoDB` para lock) — compartilhado pelos 4 repositórios, cada um com sua própria `key` de state.
+- **Provisionamento e Pipeline**: o `Desenvolvedor` e o `GitHub Actions` publicam a imagem no `Amazon ECR` (Docker push) e executam `terraform apply` contra o backend remoto (`Terraform State S3` + `DynamoDB` para lock) — compartilhado pelos 9 repositórios, cada um com sua própria `key` de state.
 - Os recursos de **Identidade e Acesso** (EKS OIDC + IRSA, GitHub OIDC + ECR Role) ficam no repositório do cluster.
 - Observação: no modo **AWS Academy**, a pipeline usa secrets (chaves de sessão) para acessar a conta AWS, e os recursos de OIDC/IRSA ficam desabilitados.
 
 ## Diagrama de dependência entre os repositórios Terraform
 
-A leitura via `terraform_remote_state` (ver seção anterior) cria uma **ordem de apply obrigatória** entre os quatro repositórios: cada seta abaixo é uma leitura de state, não uma chamada de API — se o state do lado de origem da seta ainda não existir no ambiente (`dev`, `homologacao` ou `producao`) sendo lido, o `plan`/`apply` do lado de destino falha.
+Os 9 repositórios leem recursos uns dos outros, o que cria uma **ordem de apply obrigatória**. Se o recurso lido ainda não existir no ambiente (`dev`, `homologacao` ou `producao`), o `plan`/`apply` do repositório que o lê falha. O diagrama mostra só a sequência das etapas. A tabela logo abaixo lista todas as leituras, inclusive as de etapas mais distantes.
 
-```mermaid
-flowchart LR
-    DB["oficina-mecanica-infra-banco-dados<br/><small>database/&lt;env&gt;/terraform.tfstate</small>"]
-    K8S["oficina-mecanica-infra-kubernetes<br/><small>kubernetes/&lt;env&gt;/terraform.tfstate</small>"]
-    APP["oficina-mecanica-fiap: infra/aws<br/><small>aws/&lt;env&gt;/terraform.tfstate</small>"]
-    LAMBDA["oficina-mecanica-lambda-auth<br/><small>lambda/&lt;env&gt;/terraform.tfstate</small>"]
+![Ordem de apply entre os repositórios Terraform](imgs/dependencia_terraform_fase4.png)
 
-    DB -- "rds_secret_arn" --> K8S
-    DB -- "rds_endpoint, rds_password" --> APP
-    K8S -- "cluster_name, ecr_repository_url,<br/>oidc_provider_arn" --> APP
-    DB -- "vpc_id, private_subnet_ids,<br/>rds_secret_arn" --> LAMBDA
-    APP -- "app_secret_arn<br/>(JWT_SECRET_KEY)" --> LAMBDA
-    K8S -- "vpc_id, private_subnet_ids<br/>(VPC Link, ADR-0006)" --> LAMBDA
-```
+| Repositório | Lê de | O quê |
+|---|---|---|
+| `oficina-mecanica-infra-kubernetes` | banco | `vpc_id`, `vpc_cidr_block`, `default_route_table_id` (VPC Peering) e `rds_secret_arn` |
+| `oficina-mecanica-catalogo` | kubernetes | `cluster_name` |
+| `oficina-mecanica-orcamento`, `oficina-mecanica-execucao` | kubernetes | `cluster_name` |
+| `oficina-mecanica-estoque`, `oficina-mecanica-pagamento` | banco | `vpc_id`, `private_subnet_ids` (o RDS de cada um fica na VPC do banco) |
+| | kubernetes | `cluster_name`, `vpc_cidr_block` (liberar o acesso do cluster ao RDS) |
+| `oficina-mecanica-estoque` | catálogo | tópico `oficina-<ambiente>-catalogo-eventos`, **pelo nome** |
+| `oficina-mecanica-fiap` (`infra/aws`) | banco | `rds_endpoint`, `rds_password` |
+| | kubernetes | `cluster_name`, `ecr_repository_url`, `oidc_provider_arn` |
+| | os 4 participantes | filas `<serviço>-comandos` e tópicos `<serviço>-eventos`, **pelo nome** |
+| `oficina-mecanica-lambda-auth` | banco | `vpc_id`, `private_subnet_ids`, `rds_secret_arn` ([ADR-0005](adrs/0005-lambda-auth-na-vpc-do-banco.md)) |
+| | kubernetes | `vpc_id`, `private_subnet_ids` (VPC Link, [ADR-0006](adrs/0006-alb-interno-vpc-link.md)) |
+| | `oficina-mecanica-fiap` | `app_secret_arn` (o `JWT_SECRET_KEY`) |
 
-Ordem de apply, portanto: **banco de dados → cluster Kubernetes → aplicação principal → Lambda de autenticação**. Isso vale tanto para uma aplicação manual local quanto para os workflows de CI/CD de cada repositório — nenhum deles provisiona os outros automaticamente, então rodar o `terraform apply` do repositório errado primeiro (ou apontar `kubernetes_state_key`/`database_state_key`/`app_state_key`/`infra_environment` para um ambiente que nunca foi aplicado) leva a essa falha. A Lambda depende da aplicação principal porque lê o `JWT_SECRET_KEY` do secret que `infra/aws` cria (ver [ADR-0005](adrs/0005-lambda-auth-na-vpc-do-banco.md)) **e** do cluster Kubernetes diretamente, para o VPC Link alcançar o ALB interno da aplicação principal (ver [ADR-0006](adrs/0006-alb-interno-vpc-link.md)) — por isso ela é sempre a última da cadeia.
+Há dois tipos de leitura. As leituras de state (`terraform_remote_state`) servem para a infraestrutura compartilhada (banco, cluster, secret). Já os recursos de mensageria de outro microsserviço são lidos **pelo nome** (`data "aws_sns_topic"`/`data "aws_sqs_queue"`), e não pelo state dele. Assim, o acoplamento entre os serviços fica só no contrato de nomes (`oficina-<ambiente>-<serviço>-comandos`/`-eventos`). Nenhum workflow provisiona outro repositório. Rodar um repositório antes da sua origem (ou apontar `kubernetes_state_key`/`database_state_key`/`app_state_key`/`infra_environment` para um ambiente que nunca foi aplicado) leva a uma das falhas abaixo.
 
 > **O que acontece se você rodar fora de ordem:** o `terraform plan` (ou `apply`) do repositório que lê o state ausente falha imediatamente, com:
 > ```
 > Error: Unable to find remote state
 > No stored state was found for the given workspace in the given backend.
 > ```
-> Não há execução parcial nem valores vazios silenciosos — o Terraform recusa a rodar o `plan` sem conseguir resolver a leitura. A correção é sempre a mesma: aplique primeiro o repositório de origem da seta, no mesmo ambiente (`dev`/`homologacao`/`producao`) que o repositório dependente está tentando ler.
+> Na leitura pelo nome, o erro é de recurso não encontrado (por exemplo, `Error: ... SNS Topic ... not found`).
+>
+> Não há execução parcial nem valores vazios silenciosos — o Terraform recusa a rodar o `plan` sem conseguir resolver a leitura. A correção é sempre a mesma: aplique primeiro o repositório de origem, no mesmo ambiente (`dev`/`homologacao`/`producao`) que o repositório dependente está tentando ler.
 
 ## Diagrama do fluxo de deploy
 

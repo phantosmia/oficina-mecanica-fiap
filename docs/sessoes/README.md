@@ -15,3 +15,4 @@ Ver instrução de uso no `CLAUDE.md` da raiz do repositório ("Continuidade ent
 - [2026-10-17 — SonarCloud nos 6 microsserviços](2026-10-17-sonarcloud.md)
 - [2026-10-17 — Terraform e deploy dos 6 microsserviços na AWS](2026-10-17-provisionamento-fase4.md)
 - [2026-10-24 — Correlação de logs e traces pela saga](2026-10-24-correlacao-logs-saga.md)
+- [2026-11-07 — Roteiro do vídeo da Fase 4 e diagramas como código](2026-11-07-roteiro-video-e-diagramas.md)
