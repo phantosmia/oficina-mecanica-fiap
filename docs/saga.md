@@ -222,7 +222,7 @@ A consulta síncrona da Execução ao Catálogo é `POST /catalog/lookup` com `{
 |---|---|---|
 | Resposta de participante a um comando (não inclui o trabalho do mecânico: o diagnóstico e o reparo não têm prazo automático) | 5 minutos | Reenvia o comando (até 3 vezes); depois, compensa |
 | Aprovação do orçamento pelo cliente | 7 dias | Compensa (`CancelarOrcamento`, `LiberarPecas`) |
-| Pagamento após a cobrança | 3 dias | Compensa (`CancelarOrcamento`, `LiberarPecas`) |
+| Pagamento após a cobrança | 3 dias | Compensa (`CancelarCobranca`, `CancelarOrcamento`, `LiberarPecas`) |
 
 Os prazos são configuráveis por variável de ambiente no OS Service. Para a demonstração em vídeo, podem ser reduzidos para segundos.
 
