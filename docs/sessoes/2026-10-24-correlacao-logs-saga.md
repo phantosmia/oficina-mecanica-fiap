@@ -45,6 +45,28 @@ A conta continuava a `340919830422`, mas tudo tinha sido apagado, inclusive o bu
 - **A primeira mensagem de cada worker recém-iniciado some do New Relic.** O agente descarta a transação que dispara o registro da aplicação (`startup_timeout` padrão 0). Na OS 1, `EnfileirarDiagnostico` e `GerarOrcamento` não apareceram, e o `OrcamentoGerado` ficou sem trace pai. Correção: `NEW_RELIC_STARTUP_TIMEOUT=10` no Deployment do worker (só nele; na API atrasaria a primeira requisição e as probes): [fiap#50](https://github.com/phantosmia/oficina-mecanica-fiap/pull/50), [estoque#5](https://github.com/phantosmia/oficina-mecanica-estoque/pull/5), [orcamento#5](https://github.com/phantosmia/oficina-mecanica-orcamento/pull/5), [pagamento#7](https://github.com/phantosmia/oficina-mecanica-pagamento/pull/7), [execucao#5](https://github.com/phantosmia/oficina-mecanica-execucao/pull/5).
 - **A consulta de exemplo do `docs/saga.md` estava errada**: `order_id` chega como número (`order_id = 42`, sem aspas), e `trace.id` precisa de crases no NRQL. Corrigido no fiap#50.
 
+## Verificação da correção (mesma sessão)
+
+Depois do merge dos 5 PRs e do redeploy, a OS 2 foi aberta e diagnosticada com os workers recém-iniciados. As primeiras mensagens de cada um (`EnfileirarDiagnostico`, `DiagnosticoEnfileirado`, `GerarOrcamento`) apareceram no New Relic, todas com trace pai, e o trace do diagnóstico passou por 5 apps (78 spans), incluindo o Orçamento, que ficava de fora na OS 1.
+
+## Coleção Postman (mesma sessão)
+
+`postman/` com a coleção e os ambientes `local` e `homologacao` ([README](../../postman/README.md)).
+
+- **Requisições *Aguardar* para a parte assíncrona.** Elas repetem o mesmo item (`pm.execution.setNextRequest(pm.info.requestId)`, com intervalo de 2 a 4 s) até o status esperado. Assim o Collection Runner e o Newman passam pela saga sem `sleep` fixo. Usar o ID da requisição, e não o nome, evita confusão entre itens de mesmo nome em pastas diferentes.
+- **Ambiente `homologacao`.** Catálogo, Estoque e Execução não têm LoadBalancer, então são acessados por `kubectl port-forward` nas mesmas portas do Compose (8001 a 8003). Assim essas três URLs são iguais nos dois ambientes. Os endereços públicos ficam como placeholders, porque mudam a cada recriação.
+- **O prazo de pagamento vencido ficou de fora.** Esse terceiro caminho de compensação depende de esperar o prazo.
+- **Testada com Newman contra o `homologacao`**: 50 requisições e 69 asserções, sem falhas, incluindo as duas compensações. O trecho do pagamento (manual no navegador) e o ambiente `local` não foram rodados nesta sessão.
+- **O arquivo da coleção foi gerado por um script Python**, que não foi versionado. A partir daqui, a fonte é o JSON: editar no Postman e exportar.
+
+## Justificativa da saga no README (mesma sessão)
+
+O PDF pede que a escolha entre orquestração e coreografia seja justificada no README ([fiap#54](https://github.com/phantosmia/oficina-mecanica-fiap/pull/54)). A seção nova resume a ADR-0008 com o fluxo atual da ADR-0010, sem alterar as ADRs: por que orquestração, por que o orquestrador fica no OS Service, as garantias do rollback e o que se aceitou em troca. Ao revisar contra o código, apareceu um erro na tabela de prazos do `docs/saga.md`: o prazo de pagamento vencido também envia `CancelarCobranca`. Corrigido no mesmo PR.
+
 ## Pendente
 
-- Cadastrar `NEW_RELIC_LICENSE_KEY` nos 5 repositórios dos serviços (environment `homologacao`), redeployar e conferir um trace distribuído no New Relic. A chave é a mesma do OS Service.
+- Próximo item da ordem combinada: diagramas (arquitetura geral da Fase 4 e dependência entre os repositórios Terraform). Depois vêm o vídeo e o PDF.
+
+## License key do New Relic nos 5 serviços
+
+O New Relic só mostra a chave inteira quando ela é criada, então não dava para copiar a do OS Service. A usuária criou uma license key nova (*Ingest - License*) na mesma conta. Ela foi cadastrada como `NEW_RELIC_LICENSE_KEY` no environment `homologacao` dos 5 serviços, e o OS Service continua com a dele. A cópia local está em `.new-relic`, excluída do git via `.git/info/exclude`.

@@ -1,7 +1,10 @@
 name: CI
 
 on:
+  # Push só na main: nas outras branches, o PR já roda o CI. O plano Free do
+  # SonarCloud também recusa análise de branch que não seja a main.
   push:
+    branches: [main]
   pull_request:
 
 permissions:

@@ -76,7 +76,7 @@ Para demonstrações em vídeo, o HPA em [k8s/base/hpa.yaml](../k8s/base/hpa.yam
 
 ## Pipeline automatizada no GitHub
 
-O repositório possui pipeline de CI em [.github/workflows/ci.yml](../.github/workflows/ci.yml), com execução automática em `push` e `pull_request`.
+O repositório possui pipeline de CI em [.github/workflows/ci.yml](../.github/workflows/ci.yml), com execução automática em `pull_request` e em `push` na `main` (como nos outros 5 serviços; o plano Free do SonarCloud não analisa outras branches).
 
 Etapas do job `tests`:
 

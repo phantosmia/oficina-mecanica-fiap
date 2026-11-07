@@ -1,0 +1,2001 @@
+{
+  "info": {
+    "_postman_id": "fa1a1399-807b-5619-b030-4f532835f965",
+    "name": "Oficina Mecânica — fluxo da OS (saga)",
+    "description": "Fluxo completo da ordem de serviço pelos 6 microsserviços, com a saga orquestrada pelo OS Service, e as compensações. Use com um dos ambientes de `postman/` (local ou homologacao). Ver `postman/README.md`.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "auth": {
+    "type": "bearer",
+    "bearer": [
+      {
+        "key": "token",
+        "value": "{{admin_token}}",
+        "type": "string"
+      }
+    ]
+  },
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Faz login sozinho na primeira requisição autenticada (ou rode \"Login admin\").",
+          "if (!pm.collectionVariables.get('admin_token') && pm.info.requestName !== 'Login admin (OS Service)') {",
+          "    pm.sendRequest({",
+          "        url: pm.variables.replaceIn('{{os_url}}/auth/token'),",
+          "        method: 'POST',",
+          "        header: { 'Content-Type': 'application/x-www-form-urlencoded' },",
+          "        body: { mode: 'urlencoded', urlencoded: [",
+          "            { key: 'username', value: pm.variables.get('admin_username') },",
+          "            { key: 'password', value: pm.variables.get('admin_password') },",
+          "        ] },",
+          "    }, (err, res) => {",
+          "        if (!err && res.code === 200) pm.collectionVariables.set('admin_token', res.json().access_token);",
+          "    });",
+          "}"
+        ]
+      }
+    }
+  ],
+  "variable": [
+    {
+      "key": "admin_token",
+      "value": ""
+    },
+    {
+      "key": "client_token",
+      "value": ""
+    },
+    {
+      "key": "order_id",
+      "value": ""
+    },
+    {
+      "key": "saga_id",
+      "value": ""
+    },
+    {
+      "key": "service_id",
+      "value": ""
+    },
+    {
+      "key": "part_id",
+      "value": ""
+    },
+    {
+      "key": "quote_token",
+      "value": ""
+    },
+    {
+      "key": "checkout_url",
+      "value": ""
+    },
+    {
+      "key": "_tries",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "id": "fd5d3d08-5c93-5faa-9a2e-d103548cc181",
+      "name": "0. Saúde dos serviços",
+      "item": [
+        {
+          "id": "47815094-d53a-5220-9c13-5970a983feae",
+          "name": "Health os",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{os_url}}/health",
+              "host": [
+                "{{os_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "d55a9cf5-3dd0-5ad9-9c58-176a087dbe7a",
+          "name": "Health catalogo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogo_url}}/health",
+              "host": [
+                "{{catalogo_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "1da99e08-1a57-5259-a145-e9ae487adba2",
+          "name": "Health estoque",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{estoque_url}}/health",
+              "host": [
+                "{{estoque_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "04b70608-398a-54d6-bdfa-9f74694c2806",
+          "name": "Health execucao",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{execucao_url}}/health",
+              "host": [
+                "{{execucao_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "b7966fd4-4499-5f6a-8ecc-43325a4ebea8",
+          "name": "Health orcamento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{orcamento_url}}/health",
+              "host": [
+                "{{orcamento_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "d6278933-8609-59ca-a551-eae2d5d61cfd",
+          "name": "Health pagamento",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{pagamento_url}}/health",
+              "host": [
+                "{{pagamento_url}}"
+              ],
+              "path": [
+                "health"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        }
+      ],
+      "description": "Confere que as URLs do ambiente respondem."
+    },
+    {
+      "id": "9cab167a-eccf-551c-9fb7-57be7f831c14",
+      "name": "1. Preparação",
+      "item": [
+        {
+          "id": "cb6be2a7-6868-567f-915f-32e67acb0024",
+          "name": "Login admin (OS Service)",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{os_url}}/auth/token",
+              "host": [
+                "{{os_url}}"
+              ],
+              "path": [
+                "auth",
+                "token"
+              ]
+            },
+            "body": {
+              "mode": "urlencoded",
+              "urlencoded": [
+                {
+                  "key": "username",
+                  "value": "{{admin_username}}"
+                },
+                {
+                  "key": "password",
+                  "value": "{{admin_password}}"
+                }
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            },
+            "description": "O token de admin emitido pelo OS Service vale nas rotas de admin dos 6 serviços (mesmo `JWT_SECRET_KEY`)."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.collectionVariables.set('admin_token', pm.response.json().access_token);",
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "e4a57b78-b294-5e99-8c18-714b17508910",
+          "name": "Listar serviços do catálogo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogo_url}}/services",
+              "host": [
+                "{{catalogo_url}}"
+              ],
+              "path": [
+                "services"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const s = pm.response.json().find(x => x.name === 'Revisão de freios') || pm.response.json()[0];",
+                  "pm.collectionVariables.set('service_id', s.id);",
+                  "console.log('Serviço do diagnóstico: ' + s.name + ' (' + s.id + ')');",
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "a596952b-4fe7-5d1e-8959-4e55c4077b9f",
+          "name": "Listar peças do catálogo",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{catalogo_url}}/parts",
+              "host": [
+                "{{catalogo_url}}"
+              ],
+              "path": [
+                "parts"
+              ]
+            },
+            "auth": {
+              "type": "noauth"
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const p = pm.response.json().find(x => x.name === 'Disco de freio') || pm.response.json()[0];",
+                  "pm.collectionVariables.set('part_id', p.id);",
+                  "console.log('Peça do diagnóstico: ' + p.name + ' (' + p.id + ')');",
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "id": "ebd9c731-795c-590b-9520-857d2752ca00",
+          "name": "Saldo da peça no Estoque",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{estoque_url}}/stock/{{part_id}}",
+              "host": [
+                "{{estoque_url}}"
+              ],
+              "path": [
+                "stock",
+                "{{part_id}}"
+              ]
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "console.log('Saldo: ' + JSON.stringify(pm.response.json()));",
+                  "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "e3ef2e70-7d64-5d42-abd4-24496737353e",
+      "name": "2. Fluxo completo",
+      "item": [
+        {
+          "id": "f5bbdeca-8890-54cf-ba83-05bf368fda63",
+          "name": "2.1 Abertura e diagnóstico",
+          "item": [
+            {
+              "id": "3485a9c0-c4f1-51d4-ae28-418c630fa1b5",
+              "name": "Abrir OS (fluxo completo)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{os_url}}/service-orders",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"client\": {\n    \"name\": \"{{client_name}}\",\n    \"document_number\": \"{{cpf}}\",\n    \"email\": \"{{client_email}}\"\n  },\n  \"vehicle\": {\n    \"plate\": \"{{plate}}\",\n    \"brand\": \"Fiat\",\n    \"model\": \"Uno\",\n    \"year\": 2015\n  },\n  \"problem_description\": \"Barulho ao frear\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Abre a OS só com cliente, veículo e problema (ADR-0010) e inicia a saga na mesma transação."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const os = pm.response.json();",
+                      "pm.collectionVariables.set('order_id', os.id);",
+                      "console.log('OS aberta: ' + os.id);",
+                      "pm.test('status = recebida', () => pm.expect(os.status).to.eql('recebida'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "9580c582-8ec0-5d1c-a9d1-adc8d11ab650",
+              "name": "Aguardar fila de diagnóstico (fluxo completo)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/saga",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "saga"
+                  ]
+                },
+                "description": "A saga manda `EnfileirarDiagnostico` à Execução e espera `DiagnosticoEnfileirado`."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"AGUARDANDO_DIAGNOSTICO\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.state) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('state = ' + body.state + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('state = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.state));",
+                      "",
+                      "    pm.collectionVariables.set('saga_id', body.saga_id);",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "4fedf0c3-9d29-5199-a885-84c6058f9824",
+              "name": "Iniciar diagnóstico (fluxo completo)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/diagnosis/start",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "diagnosis",
+                    "start"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('em_diagnostico', () => pm.expect(pm.response.json().status).to.eql('em_diagnostico'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "02d12ae8-3ed4-5633-b23c-05e57c8b4a47",
+              "name": "Concluir diagnóstico (fluxo completo)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/diagnosis/complete",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "diagnosis",
+                    "complete"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"notes\": \"Discos de freio gastos\",\n  \"services\": [\n    {\n      \"id\": \"{{service_id}}\",\n      \"quantity\": 1\n    }\n  ],\n  \"parts\": [\n    {\n      \"id\": \"{{part_id}}\",\n      \"quantity\": 2\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "A Execução valida os itens no Catálogo (REST) e publica `DiagnosticoConcluido`; a saga pede a reserva ao Estoque."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "6f2b2daa-ccca-5436-bdd7-6b06bb53cd95",
+              "name": "Aguardar orçamento gerado",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                },
+                "description": "Estoque reserva as peças (`PecasReservadas`) e o Orçamento gera e envia o link (`OrcamentoGerado`)."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"aguardando_aprovacao\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "692b85df-be18-500f-a6da-9d774ab0c8b5",
+              "name": "Reserva no Estoque",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{estoque_url}}/reservations/{{saga_id}}",
+                  "host": [
+                    "{{estoque_url}}"
+                  ],
+                  "path": [
+                    "reservations",
+                    "{{saga_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('reserva ativa', () => pm.expect(pm.response.json().status).to.eql('reservada'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "698e67ba-c7cb-5f22-8651-61fc77389e63",
+          "name": "2.2 Aprovação do orçamento",
+          "item": [
+            {
+              "id": "a80b2be3-385b-56bd-bb1e-bf5da6c80ddf",
+              "name": "Ver orçamento (admin)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{orcamento_url}}/quotes/{{order_id}}",
+                  "host": [
+                    "{{orcamento_url}}"
+                  ],
+                  "path": [
+                    "quotes",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const q = pm.response.json();",
+                      "const token = q.approval_url.split('/').pop();",
+                      "pm.collectionVariables.set('quote_token', token);",
+                      "console.log('Link de aprovação (o mesmo do e-mail): ' + q.approval_url);",
+                      "pm.test('orçamento pendente com total > 0', () => { pm.expect(q.status).to.eql('aguardando_aprovacao'); pm.expect(q.total).to.be.above(0); });",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "13a700a5-9db3-5373-a3a9-2787ee9ce922",
+              "name": "Ver orçamento pelo link (cliente)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{orcamento_url}}/public/quotes/{{quote_token}}",
+                  "host": [
+                    "{{orcamento_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "quotes",
+                    "{{quote_token}}"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "O que a página do link mostra ao cliente, sem login. A página HTML é `{{orcamento_url}}/orcamento/{{quote_token}}`."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "66eb5c39-0aac-53aa-a9b8-053bb153bf3b",
+              "name": "Aprovar pelo link (cliente)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{orcamento_url}}/public/quotes/{{quote_token}}/approve",
+                  "host": [
+                    "{{orcamento_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "quotes",
+                    "{{quote_token}}",
+                    "approve"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Decisão única: o token deixa de valer depois do primeiro uso."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('aprovado', () => pm.expect(pm.response.json().status).to.eql('aprovado'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "26e80a38-12c6-5a93-a0a2-d46480ca392b",
+              "name": "Aguardar cobrança criada",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                },
+                "description": "A saga pede `CriarCobranca` ao Pagamento, que cria a cobrança no Mercado Pago."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"aguardando_pagamento\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "cdc05f01-322d-5ea9-904c-f9ff960b9c9d",
+          "name": "2.3 Pagamento (passo manual no navegador)",
+          "item": [
+            {
+              "id": "6c303f15-45fa-59b9-8622-7edd89151bcd",
+              "name": "Ver cobrança e link de pagamento",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{pagamento_url}}/charges/{{order_id}}",
+                  "host": [
+                    "{{pagamento_url}}"
+                  ],
+                  "path": [
+                    "charges",
+                    "{{order_id}}"
+                  ]
+                },
+                "description": "Abra `checkout_url` no navegador e pague no sandbox do Mercado Pago. Numa janela anônima, entre primeiro em mercadopago.com.br com o **comprador de teste** (ver README do Pagamento)."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const c = pm.response.json();",
+                      "pm.collectionVariables.set('checkout_url', c.checkout_url);",
+                      "console.log('>>> Abra este link e pague com o comprador de teste: ' + c.checkout_url);",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "590ace1b-a217-5e2d-af18-e7ffd8c90781",
+              "name": "Aguardar pagamento confirmado",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{pagamento_url}}/charges/{{order_id}}",
+                  "host": [
+                    "{{pagamento_url}}"
+                  ],
+                  "path": [
+                    "charges",
+                    "{{order_id}}"
+                  ]
+                },
+                "description": "Espera até 6 min. A confirmação vem do retorno do comprador ou da reconciliação periódica (no Lab o webhook não chega). Para forçar, use *Sincronizar cobrança*."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"pago\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 90) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/90)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 4000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "a3e853a0-65a3-53f6-9a9f-1a43ccfb22eb",
+              "name": "Sincronizar cobrança (opcional)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{pagamento_url}}/charges/{{order_id}}/sync",
+                  "host": [
+                    "{{pagamento_url}}"
+                  ],
+                  "path": [
+                    "charges",
+                    "{{order_id}}",
+                    "sync"
+                  ]
+                },
+                "description": "Consulta o estado real no Mercado Pago na hora, sem esperar a reconciliação."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "ee8c1ec7-982a-5ffb-bef4-7320e01d00dd",
+              "name": "Aguardar fila de reparo",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                },
+                "description": "Pagamento confirmado: a saga pede a baixa ao Estoque (`ConfirmarBaixa`) e enfileira o reparo na Execução."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"em_execucao\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "f5e46741-1ce1-545b-be1c-420326f4ee1f",
+          "name": "2.4 Reparo e entrega",
+          "item": [
+            {
+              "id": "cf52dc12-22c5-52ea-ae12-9af892711575",
+              "name": "Aguardar reparo na fila",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"aguardando_reparo\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "6398f13a-cfd6-51dc-9d02-5821cc6d7521",
+              "name": "Iniciar reparo",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/repair/start",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "repair",
+                    "start"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "eed4095c-99ab-5676-ba09-6c1bb034b6d6",
+              "name": "Finalizar reparo",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/repair/finish",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "repair",
+                    "finish"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"notes\": \"Discos trocados\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8cc221a4-85bd-5b9b-a55c-dcbc2682903d",
+              "name": "Aguardar OS finalizada",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"finalizada\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "ea2e5d5d-15c9-5638-8833-d314ef4143c0",
+              "name": "Entregar veículo",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/deliver",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "deliver"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('entregue', () => pm.expect(pm.response.json().status).to.eql('entregue'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "39a2afa2-3ba5-5095-9fc0-711a92f41249",
+              "name": "Estado final da saga",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/saga",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "saga"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('saga CONCLUIDA', () => pm.expect(pm.response.json().state).to.eql('CONCLUIDA'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "e46def56-39fa-5276-a1fd-501ab536d9bd",
+              "name": "Detalhe da OS (itens e histórico)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "747f328c-6d79-5297-b066-0efed82922d0",
+              "name": "Saldo da peça depois da baixa",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{estoque_url}}/stock/{{part_id}}",
+                  "host": [
+                    "{{estoque_url}}"
+                  ],
+                  "path": [
+                    "stock",
+                    "{{part_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "console.log('Saldo: ' + JSON.stringify(pm.response.json()));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "7f10032f-2e28-528b-9a56-1a1cbd9f5c97",
+          "name": "2.5 Cliente (autenticação via CPF)",
+          "item": [
+            {
+              "id": "d3114d21-c349-5a03-b5ef-5d9c909fb9dd",
+              "name": "Token do cliente via CPF (Lambda)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{auth_url}}/auth/cpf",
+                  "host": [
+                    "{{auth_url}}"
+                  ],
+                  "path": [
+                    "auth",
+                    "cpf"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"cpf\": \"{{cpf}}\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "auth": {
+                  "type": "noauth"
+                },
+                "description": "Function Serverless do `oficina-mecanica-lambda-auth`, atrás do API Gateway."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.collectionVariables.set('client_token', pm.response.json().access_token);",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "7fe3018b-eb45-5b17-9716-4a50e36b2890",
+              "name": "Acompanhar OS (cliente)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/tracking",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "tracking"
+                  ]
+                },
+                "auth": {
+                  "type": "bearer",
+                  "bearer": [
+                    {
+                      "key": "token",
+                      "value": "{{client_token}}",
+                      "type": "string"
+                    }
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "description": "Abertura → diagnóstico → reserva → orçamento → aprovação → pagamento → baixa → reparo → entrega. No Collection Runner, rode as subpastas em ordem; as requisições *Aguardar* repetem sozinhas até a saga chegar ao status esperado."
+    },
+    {
+      "id": "e01a3ab6-ee12-5052-a8a8-006ae4ef071a",
+      "name": "3. Compensações",
+      "item": [
+        {
+          "id": "4ce6af94-21c7-5ac5-a9e9-2bbda7dadfd0",
+          "name": "3.1 Orçamento recusado (libera a reserva)",
+          "item": [
+            {
+              "id": "dc0c2dbf-007e-5d11-b6fc-781acc2b4e54",
+              "name": "Abrir OS (recusa)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{os_url}}/service-orders",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"client\": {\n    \"name\": \"{{client_name}}\",\n    \"document_number\": \"{{cpf}}\",\n    \"email\": \"{{client_email}}\"\n  },\n  \"vehicle\": {\n    \"plate\": \"{{plate}}\",\n    \"brand\": \"Fiat\",\n    \"model\": \"Uno\",\n    \"year\": 2015\n  },\n  \"problem_description\": \"Barulho ao frear\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Abre a OS só com cliente, veículo e problema (ADR-0010) e inicia a saga na mesma transação."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const os = pm.response.json();",
+                      "pm.collectionVariables.set('order_id', os.id);",
+                      "console.log('OS aberta: ' + os.id);",
+                      "pm.test('status = recebida', () => pm.expect(os.status).to.eql('recebida'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "0840c553-e5df-56f2-8661-f8538dbfc808",
+              "name": "Aguardar fila de diagnóstico (recusa)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/saga",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "saga"
+                  ]
+                },
+                "description": "A saga manda `EnfileirarDiagnostico` à Execução e espera `DiagnosticoEnfileirado`."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"AGUARDANDO_DIAGNOSTICO\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.state) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('state = ' + body.state + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('state = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.state));",
+                      "",
+                      "    pm.collectionVariables.set('saga_id', body.saga_id);",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "cbd4df53-cbfd-5089-beae-3f123f299249",
+              "name": "Iniciar diagnóstico (recusa)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/diagnosis/start",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "diagnosis",
+                    "start"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('em_diagnostico', () => pm.expect(pm.response.json().status).to.eql('em_diagnostico'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "12d117dc-6084-5e6a-86b5-ec0db8ce2a4a",
+              "name": "Concluir diagnóstico (recusa)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/diagnosis/complete",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "diagnosis",
+                    "complete"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"notes\": \"Discos de freio gastos\",\n  \"services\": [\n    {\n      \"id\": \"{{service_id}}\",\n      \"quantity\": 1\n    }\n  ],\n  \"parts\": [\n    {\n      \"id\": \"{{part_id}}\",\n      \"quantity\": 2\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "A Execução valida os itens no Catálogo (REST) e publica `DiagnosticoConcluido`; a saga pede a reserva ao Estoque."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "e5dd8354-4a80-582c-be44-af79edef761f",
+              "name": "Aguardar orçamento gerado (recusa)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"aguardando_aprovacao\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "d865670d-4ccd-5402-be07-0ac9dc10c2e3",
+              "name": "Ver orçamento (recusa)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{orcamento_url}}/quotes/{{order_id}}",
+                  "host": [
+                    "{{orcamento_url}}"
+                  ],
+                  "path": [
+                    "quotes",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const q = pm.response.json();",
+                      "const token = q.approval_url.split('/').pop();",
+                      "pm.collectionVariables.set('quote_token', token);",
+                      "console.log('Link de aprovação (o mesmo do e-mail): ' + q.approval_url);",
+                      "pm.test('orçamento pendente com total > 0', () => { pm.expect(q.status).to.eql('aguardando_aprovacao'); pm.expect(q.total).to.be.above(0); });",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "2e52a662-f692-5e5a-9c83-f6dd65cdb963",
+              "name": "Recusar pelo link (cliente)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{orcamento_url}}/public/quotes/{{quote_token}}/reject",
+                  "host": [
+                    "{{orcamento_url}}"
+                  ],
+                  "path": [
+                    "public",
+                    "quotes",
+                    "{{quote_token}}",
+                    "reject"
+                  ]
+                },
+                "auth": {
+                  "type": "noauth"
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('recusado', () => pm.expect(pm.response.json().status).to.eql('recusado'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "f0a2d0c3-d9bd-5764-83ec-c7b6daa486a5",
+              "name": "Aguardar OS recusada",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"recusada\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "26457470-74ef-5b39-bbc1-77e0e10ed6cf",
+              "name": "Reserva liberada no Estoque",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{estoque_url}}/reservations/{{saga_id}}",
+                  "host": [
+                    "{{estoque_url}}"
+                  ],
+                  "path": [
+                    "reservations",
+                    "{{saga_id}}"
+                  ]
+                },
+                "description": "Compensação: `LiberarPecas` devolve as peças reservadas ao saldo."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"liberada\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "id": "793f528c-1ae8-512d-90e1-a32c07928b3a",
+          "name": "3.2 Estoque insuficiente (cancela a OS)",
+          "item": [
+            {
+              "id": "a78b9b57-c6ef-5d53-9bff-172d37a5e8fe",
+              "name": "Abrir OS (sem estoque)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{os_url}}/service-orders",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"client\": {\n    \"name\": \"{{client_name}}\",\n    \"document_number\": \"{{cpf}}\",\n    \"email\": \"{{client_email}}\"\n  },\n  \"vehicle\": {\n    \"plate\": \"{{plate}}\",\n    \"brand\": \"Fiat\",\n    \"model\": \"Uno\",\n    \"year\": 2015\n  },\n  \"problem_description\": \"Barulho ao frear\"\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "Abre a OS só com cliente, veículo e problema (ADR-0010) e inicia a saga na mesma transação."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const os = pm.response.json();",
+                      "pm.collectionVariables.set('order_id', os.id);",
+                      "console.log('OS aberta: ' + os.id);",
+                      "pm.test('status = recebida', () => pm.expect(os.status).to.eql('recebida'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "9d4f75bd-790c-5eed-be10-d4cf80e5bc54",
+              "name": "Aguardar fila de diagnóstico (sem estoque)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/saga",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "saga"
+                  ]
+                },
+                "description": "A saga manda `EnfileirarDiagnostico` à Execução e espera `DiagnosticoEnfileirado`."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"AGUARDANDO_DIAGNOSTICO\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.state) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('state = ' + body.state + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('state = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.state));",
+                      "",
+                      "    pm.collectionVariables.set('saga_id', body.saga_id);",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "14ff881a-955e-5d68-9486-5b3edbabb1f9",
+              "name": "Iniciar diagnóstico (sem estoque)",
+              "request": {
+                "method": "POST",
+                "header": [],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/diagnosis/start",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "diagnosis",
+                    "start"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('em_diagnostico', () => pm.expect(pm.response.json().status).to.eql('em_diagnostico'));",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "2beee925-5a24-5800-aaa4-fc9cc4d54d4a",
+              "name": "Concluir diagnóstico (sem estoque)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{execucao_url}}/jobs/{{order_id}}/diagnosis/complete",
+                  "host": [
+                    "{{execucao_url}}"
+                  ],
+                  "path": [
+                    "jobs",
+                    "{{order_id}}",
+                    "diagnosis",
+                    "complete"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"notes\": \"Discos de freio gastos\",\n  \"services\": [\n    {\n      \"id\": \"{{service_id}}\",\n      \"quantity\": 1\n    }\n  ],\n  \"parts\": [\n    {\n      \"id\": \"{{part_id}}\",\n      \"quantity\": 999\n    }\n  ]\n}",
+                  "options": {
+                    "raw": {
+                      "language": "json"
+                    }
+                  }
+                },
+                "description": "A Execução valida os itens no Catálogo (REST) e publica `DiagnosticoConcluido`; a saga pede a reserva ao Estoque."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "8937f870-5375-5f41-a5ec-a96688c07109",
+              "name": "Aguardar OS cancelada",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}"
+                  ]
+                },
+                "description": "O Estoque responde `ReservaRecusada` (tudo ou nada) e a saga cancela a OS."
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "const body = pm.response.json();",
+                      "const wanted = [\"cancelada\"];",
+                      "const tries = Number(pm.collectionVariables.get('_tries') || 0);",
+                      "if (!wanted.includes(body.status) && tries < 30) {",
+                      "    pm.collectionVariables.set('_tries', tries + 1);",
+                      "    console.log('status = ' + body.status + ', esperando ' + wanted.join(' ou ') + ' (tentativa ' + (tries + 1) + '/30)');",
+                      "    pm.execution.setNextRequest(pm.info.requestId);",
+                      "    setTimeout(() => {}, 2000);",
+                      "} else {",
+                      "    pm.collectionVariables.set('_tries', 0);",
+                      "    pm.test('status = ' + wanted.join(' ou '), () => pm.expect(wanted).to.include(body.status));",
+                      "",
+                      "}",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            },
+            {
+              "id": "82ab1008-36a9-52cc-91ca-f7094170c53c",
+              "name": "Motivo da falha na saga",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{os_url}}/service-orders/{{order_id}}/saga",
+                  "host": [
+                    "{{os_url}}"
+                  ],
+                  "path": [
+                    "service-orders",
+                    "{{order_id}}",
+                    "saga"
+                  ]
+                }
+              },
+              "event": [
+                {
+                  "listen": "test",
+                  "script": {
+                    "type": "text/javascript",
+                    "exec": [
+                      "console.log('Motivo: ' + pm.response.json().failure_reason);",
+                      "pm.test('HTTP 2xx', () => pm.response.to.be.success);"
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "description": "Os dois caminhos de falha que exercitam as compensações da saga. O terceiro (prazo de pagamento vencido) depende de esperar o prazo e não está aqui."
+    }
+  ]
+}
