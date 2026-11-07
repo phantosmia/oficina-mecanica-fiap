@@ -18,7 +18,7 @@ Continuação de [2026-11-07 — Roteiro do vídeo e diagramas](2026-11-07-rotei
   - Catálogo, Estoque e Execução são `ClusterIP` e ficam em `localhost:8001/8002/8003`, por port-forward.
 - **Mudança para o bloco de deploy do vídeo:** um parágrafo no README do Estoque sobre a ordem dos seeds ([oficina-mecanica-estoque#6](https://github.com/phantosmia/oficina-mecanica-estoque/pull/6)), mergeado e publicado na `homologacao` pela usuária durante a gravação.
 - **Vídeo gravado** em 13 partes, 13:33 no total. Falta juntar as partes e subir.
-- **Documento de entrega** em `~/entrega-fase4.docx`, fora do repositório. As seções seguem o PDF:
+- **Documento de entrega** em `docs/entrega/entrega-fase4.docx`. As seções seguem o PDF:
   - participantes;
   - links;
   - diagrama geral;
